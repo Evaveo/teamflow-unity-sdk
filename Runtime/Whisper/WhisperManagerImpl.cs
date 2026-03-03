@@ -209,8 +209,8 @@ namespace TeamflowSDK
             yield return null;
 
             using var melTensor = new TensorFloat(new TensorShape(1, 80, 3000), mel);
-            _encoderWorker.Schedule(melTensor);
-            var audioFeatures = _encoderWorker.PeekOutput() as TensorFloat;
+            _encoderWorker.Execute(melTensor);
+            var audioFeatures = _encoderWorker.PeekOutput("output") as TensorFloat;
             audioFeatures?.MakeReadable();
             yield return null;
 
@@ -226,7 +226,7 @@ namespace TeamflowSDK
                     { "audio_features", audioFeatures },
                     { "tokens",         tokensTensor  }
                 };
-                _decoderWorker.Schedule(inputs);
+                _decoderWorker.Execute(inputs);
                 var logits = _decoderWorker.PeekOutput("logits") as TensorFloat;
                 logits?.MakeReadable();
 

@@ -211,7 +211,6 @@ namespace TeamflowSDK
             using var melTensor = new Tensor<float>(new TensorShape(1, 80, 3000), mel);
             _encoderWorker.Schedule(melTensor);
             var audioFeatures = _encoderWorker.PeekOutput("output") as Tensor<float>;
-            audioFeatures?.MakeReadable();
             yield return null;
 
             var tokens = new List<int> { SOT_TOKEN, LANG_TOKEN_FR, TRANSCRIBE_TOKEN, NO_TIMESTAMPS };
@@ -225,15 +224,17 @@ namespace TeamflowSDK
                 _decoderWorker.SetInput("tokens", tokensTensor);
                 _decoderWorker.Schedule();
                 var logits = _decoderWorker.PeekOutput("logits") as Tensor<float>;
-                logits?.MakeReadable();
-
-                int vocabSize = logits?.shape[^1] ?? 0;
-                int lastRow   = (logits != null ? logits.shape[1] - 1 : 0);
+                if (logits == null) break;
+                float[] logitsData = logits.DownloadToArray();
+                int rank      = logits.shape.rank;
+                int vocabSize = logits.shape[rank - 1];
+                int seqLen    = rank >= 2 ? logits.shape[rank - 2] : 1;
+                int lastRowOff = (seqLen - 1) * vocabSize;
                 int bestToken = 0;
                 float bestVal = float.NegativeInfinity;
                 for (int v = 0; v < vocabSize; v++)
                 {
-                    float val = logits != null ? logits[0, lastRow, v] : float.NegativeInfinity;
+                    float val = logitsData[lastRowOff + v];
                     if (val > bestVal) { bestVal = val; bestToken = v; }
                 }
                 if (bestToken == EOT_TOKEN) break;

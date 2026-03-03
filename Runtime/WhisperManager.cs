@@ -4,16 +4,13 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-#if UNITY_SENTIS || UNITY_AI_INFERENCE
-#if UNITY_AI_INFERENCE
-using Unity.InferenceEngine;
-#else
-using Unity.Sentis;
-#endif
-#endif
+// NOTE: Unity resolves UNITY_AI_INFERENCE / UNITY_SENTIS via versionDefines in TeamflowSDK.asmdef
+// Do NOT put 'using Unity.InferenceEngine' or 'using Unity.Sentis' at the top level —
+// they must stay inside #if blocks or the assembly fails to compile when neither is installed.
 
 namespace TeamflowSDK
 {
+#if UNITY_SENTIS || UNITY_AI_INFERENCE
     /// <summary>
     /// Offline French speech-to-text using Whisper-Tiny via Unity Sentis (ONNX).
     /// 
@@ -83,12 +80,17 @@ namespace TeamflowSDK
         private int         _lastMicPos  = 0;
         private List<float> _audioBuffer = new List<float>();
 
-#if UNITY_SENTIS || UNITY_AI_INFERENCE
         // ── Sentis / Inference Engine ─────────────────────────────────────────
-        private Model   _encoderModel;
-        private Model   _decoderModel;
-        private IWorker _encoderWorker;
-        private IWorker _decoderWorker;
+#if UNITY_AI_INFERENCE
+        private Unity.InferenceEngine.Model   _encoderModel;
+        private Unity.InferenceEngine.Model   _decoderModel;
+        private Unity.InferenceEngine.IWorker _encoderWorker;
+        private Unity.InferenceEngine.IWorker _decoderWorker;
+#else
+        private Unity.Sentis.Model   _encoderModel;
+        private Unity.Sentis.Model   _decoderModel;
+        private Unity.Sentis.IWorker _encoderWorker;
+        private Unity.Sentis.IWorker _decoderWorker;
 #endif
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -107,10 +109,8 @@ namespace TeamflowSDK
 
         private void OnDestroy()
         {
-#if UNITY_SENTIS || UNITY_AI_INFERENCE
             _encoderWorker?.Dispose();
             _decoderWorker?.Dispose();
-#endif
         }
 
         // ── Model loading ─────────────────────────────────────────────────────
@@ -119,12 +119,6 @@ namespace TeamflowSDK
         {
             SetState(WhisperState.LoadingModel);
 
-#if !UNITY_SENTIS && !UNITY_AI_INFERENCE
-            LastError = "Unity Inference Engine not installed. Install com.unity.ai.inference via Package Manager.";
-            Debug.LogWarning($"[WhisperManager] {LastError}");
-            SetState(WhisperState.Error);
-            yield break;
-#else
             var encoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", ENCODER_FILENAME);
             var decoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", DECODER_FILENAME);
 
@@ -155,7 +149,6 @@ namespace TeamflowSDK
                 Debug.LogError($"[WhisperManager] {LastError}");
                 SetState(WhisperState.Error);
             }
-#endif
         }
 
         // ── Public API ────────────────────────────────────────────────────────
@@ -246,11 +239,6 @@ namespace TeamflowSDK
             SetState(WhisperState.Transcribing);
             yield return null;
 
-#if !UNITY_SENTIS && !UNITY_AI_INFERENCE
-            OnTranscribed?.Invoke("[Inference Engine non installé]");
-            SetState(WhisperState.Idle);
-            yield break;
-#else
             string result = "";
             bool done = false;
 
@@ -262,10 +250,8 @@ namespace TeamflowSDK
             Debug.Log($"[WhisperManager] Transcription: {result}");
             OnTranscribed?.Invoke(result);
             SetState(WhisperState.Idle);
-#endif
         }
 
-#if UNITY_SENTIS || UNITY_AI_INFERENCE
         private IEnumerator RunInference(float[] pcm, Action<string> callback)
         {
             // 1. Mel spectrogram (80 bins, 3000 frames) from raw PCM
@@ -273,10 +259,17 @@ namespace TeamflowSDK
             yield return null;
 
             // 2. Encoder
-            using var melTensor = new TensorFloat(new TensorShape(1, 80, 3000), mel);
+    #if UNITY_AI_INFERENCE
+            using var melTensor = new Unity.InferenceEngine.TensorFloat(new Unity.InferenceEngine.TensorShape(1, 80, 3000), mel);
             _encoderWorker.Execute(melTensor);
-            var audioFeatures = _encoderWorker.PeekOutput() as TensorFloat;
+            var audioFeatures = _encoderWorker.PeekOutput() as Unity.InferenceEngine.TensorFloat;
             audioFeatures?.MakeReadable();
+#else
+            using var melTensor = new Unity.Sentis.TensorFloat(new Unity.Sentis.TensorShape(1, 80, 3000), mel);
+            _encoderWorker.Execute(melTensor);
+            var audioFeatures = _encoderWorker.PeekOutput() as Unity.Sentis.TensorFloat;
+            audioFeatures?.MakeReadable();
+#endif
             yield return null;
 
             // 3. Decoder — greedy token generation
@@ -286,17 +279,27 @@ namespace TeamflowSDK
             for (int i = 0; i < MAX_NEW_TOKENS; i++)
             {
                 int[] tokenArr = tokens.ToArray();
-                using var tokensTensor = new TensorInt(new TensorShape(1, tokenArr.Length), tokenArr);
-
-                var inputs = new Dictionary<string, Tensor>
+#if UNITY_AI_INFERENCE
+                using var tokensTensor = new Unity.InferenceEngine.TensorInt(new Unity.InferenceEngine.TensorShape(1, tokenArr.Length), tokenArr);
+                var inputs = new Dictionary<string, Unity.InferenceEngine.Tensor>
                 {
                     { "audio_features", audioFeatures },
                     { "tokens",         tokensTensor  }
                 };
                 _decoderWorker.Execute(inputs);
-
-                var logits = _decoderWorker.PeekOutput("logits") as TensorFloat;
+                var logits = _decoderWorker.PeekOutput("logits") as Unity.InferenceEngine.TensorFloat;
                 logits?.MakeReadable();
+#else
+                using var tokensTensor = new Unity.Sentis.TensorInt(new Unity.Sentis.TensorShape(1, tokenArr.Length), tokenArr);
+                var inputs = new Dictionary<string, Unity.Sentis.Tensor>
+                {
+                    { "audio_features", audioFeatures },
+                    { "tokens",         tokensTensor  }
+                };
+                _decoderWorker.Execute(inputs);
+                var logits = _decoderWorker.PeekOutput("logits") as Unity.Sentis.TensorFloat;
+                logits?.MakeReadable();
+#endif
 
                 // Greedy: argmax of last token logits
                 int vocabSize = logits?.shape[^1] ?? 0;
@@ -463,7 +466,6 @@ namespace TeamflowSDK
                 power[i] = re[i] * re[i] + im[i] * im[i];
             return power;
         }
-#endif
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -473,6 +475,40 @@ namespace TeamflowSDK
             OnStateChanged?.Invoke(state);
         }
     }
+
+#else
+    // ── Stub: no Inference Engine installed ──────────────────────────────────
+    // TeamflowHUD compiles fine; mic buttons are hidden via _whisperReady=false.
+    public class WhisperManager : UnityEngine.MonoBehaviour
+    {
+        public enum WhisperState { Idle, LoadingModel, Recording, Transcribing, Error }
+
+        private static WhisperManager _instance;
+        public static WhisperManager Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    var go = new UnityEngine.GameObject("[WhisperManager]");
+                    _instance = go.AddComponent<WhisperManager>();
+                    DontDestroyOnLoad(go);
+                }
+                return _instance;
+            }
+        }
+
+        public WhisperState State    { get; private set; } = WhisperState.Idle;
+        public bool         IsReady  { get; private set; } = false;
+        public string       LastError { get; private set; } = "Install com.unity.ai.inference via Package Manager to enable offline STT.";
+
+        public event Action<string>       OnTranscribed;
+        public event Action<WhisperState> OnStateChanged;
+
+        public bool StartListening() { return false; }
+        public void StopListening()  { }
+    }
+#endif // UNITY_SENTIS || UNITY_AI_INFERENCE
 
     // ── Minimal BPE tokenizer (decode only) ─────────────────────────────────
     // Whisper uses a custom BPE vocab. This stub decodes token IDs to text

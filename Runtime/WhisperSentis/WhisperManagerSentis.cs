@@ -1,5 +1,5 @@
+#if UNITY_SENTIS
 // Only compiled when com.unity.sentis is installed (Unity 2022.3+)
-// enforced by TeamflowSDK.WhisperSentis.asmdef defineConstraints: ["UNITY_SENTIS"]
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -360,4 +360,5 @@ namespace TeamflowSDK
         }
     }
 }
+#endif
 

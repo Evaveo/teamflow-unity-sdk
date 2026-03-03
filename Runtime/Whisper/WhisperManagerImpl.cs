@@ -1,5 +1,5 @@
+#if UNITY_AI_INFERENCE
 // This file is only compiled when com.unity.ai.inference is installed
-// (enforced by TeamflowSDK.Whisper.asmdef defineConstraints: ["UNITY_AI_INFERENCE"])
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -362,4 +362,5 @@ namespace TeamflowSDK
         }
     }
 }
+#endif
 

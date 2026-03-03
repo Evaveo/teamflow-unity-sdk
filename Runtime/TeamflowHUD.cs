@@ -12,6 +12,9 @@ namespace TeamflowSDK
     /// </summary>
     public class TeamflowHUD : MonoBehaviour
     {
+        // ── Singleton ─────────────────────────────────────────────────────────
+        public static TeamflowHUD Instance { get; private set; }
+
         // ── Inspector ─────────────────────────────────────────────────────────
 
         [Header("HUD position")]
@@ -56,7 +59,25 @@ namespace TeamflowSDK
         private GUIStyle _labelStyle;
         private bool     _stylesReady = false;
 
+        // ── Public API ───────────────────────────────────────────────────────
+
+        /// <summary>Toggle the HUD open/closed — call from controller button, etc.</summary>
+        public void Toggle() => _expanded = !_expanded;
+
+        /// <summary>Force-open the HUD.</summary>
+        public void Open()  => _expanded = true;
+
+        /// <summary>Force-close the HUD.</summary>
+        public void Close() => _expanded = false;
+
         // ── Lifecycle ─────────────────────────────────────────────────────────
+
+        private void Awake()
+        {
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
 
         private void Start()
         {

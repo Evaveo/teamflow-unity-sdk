@@ -9,6 +9,13 @@
   "changelogUrl": "",
   "licensesUrl": "",
   "dependencies": {},
+  "samples": [
+    {
+      "displayName": "VR Starter",
+      "description": "Scene setup script + README. Run Tools → TeamFlow → Setup VR Scene to add the HUD to your scene in one click.",
+      "path": "Samples~/VRStarter"
+    }
+  ],
   "keywords": ["teamflow", "tasks", "vr", "productivity", "speech-to-text", "whisper", "offline-stt"],
   "author": {
     "name": "TeamFlow",

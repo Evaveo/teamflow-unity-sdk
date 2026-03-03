@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace TeamflowSDK
 {
-    internal static class WhisperTokenizer
+    public static class WhisperTokenizer
     {
         private static Dictionary<int, string> _vocab;
         private static bool _loaded = false;

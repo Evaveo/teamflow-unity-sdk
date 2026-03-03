@@ -1,7 +1,9 @@
 {
   "name": "TeamflowSDK.Runtime",
   "rootNamespace": "TeamflowSDK",
-  "references": ["UnityEngine.UI"],
+  "references": [
+    "UnityEngine.UI"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
@@ -9,6 +11,17 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.ai.inference",
+      "expression": "",
+      "define": "UNITY_AI_INFERENCE"
+    },
+    {
+      "name": "com.unity.sentis",
+      "expression": "",
+      "define": "UNITY_SENTIS"
+    }
+  ],
   "noEngineReferences": false
 }

@@ -83,8 +83,8 @@ namespace TeamflowSDK
         private int         _lastMicPos  = 0;
         private List<float> _audioBuffer = new List<float>();
 
-#if UNITY_SENTIS
-        // ── Sentis ────────────────────────────────────────────────────────────
+#if UNITY_SENTIS || UNITY_AI_INFERENCE
+        // ── Sentis / Inference Engine ─────────────────────────────────────────
         private Model   _encoderModel;
         private Model   _decoderModel;
         private IWorker _encoderWorker;

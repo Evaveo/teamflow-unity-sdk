@@ -94,7 +94,7 @@ namespace TeamflowSDK
 
         private IEnumerator LoadModels()
         {
-            SetState(WhisperState.LoadingModel);
+            SetState(WhisperService.State.LoadingModel);
 
             var encoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", ENCODER_FILENAME);
             var decoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", DECODER_FILENAME);
@@ -104,7 +104,7 @@ namespace TeamflowSDK
                 LastError = "Whisper models not found in StreamingAssets/Whisper/. " +
                             "Run Tools → TeamFlow → Download Whisper Models.";
                 Debug.LogWarning($"[WhisperManager] {LastError}");
-                SetState(WhisperState.Error);
+                SetState(WhisperService.State.Error);
                 yield break;
             }
 
@@ -117,13 +117,13 @@ namespace TeamflowSDK
                 _decoderWorker = new Worker(_decoderModel, BackendType.GPUCompute);
                 IsReady = true;
                 Debug.Log("[WhisperManager] Whisper-Tiny models loaded (FR offline).");
-                SetState(WhisperState.Idle);
+                SetState(WhisperService.State.Idle);
             }
             catch (Exception ex)
             {
                 LastError = $"Model load failed: {ex.Message}";
                 Debug.LogError($"[WhisperManager] {LastError}");
-                SetState(WhisperState.Error);
+                SetState(WhisperService.State.Error);
             }
         }
 
@@ -136,7 +136,7 @@ namespace TeamflowSDK
             if (Microphone.devices.Length == 0)
             {
                 LastError = "Aucun microphone détecté.";
-                SetState(WhisperState.Error);
+                SetState(WhisperService.State.Error);
                 return false;
             }
             _micDevice   = Microphone.devices[0];
@@ -144,7 +144,7 @@ namespace TeamflowSDK
             _micClip     = Microphone.Start(_micDevice, true, MAX_RECORD_SECS, SAMPLE_RATE);
             _isRecording = true;
             _lastMicPos  = 0;
-            SetState(WhisperState.Recording);
+            SetState(WhisperService.State.Recording);
             return true;
         }
 
@@ -192,7 +192,7 @@ namespace TeamflowSDK
 
         private IEnumerator TranscribeCoroutine(float[] pcm16k)
         {
-            SetState(WhisperState.Transcribing);
+            SetState(WhisperService.State.Transcribing);
             yield return null;
             string result = "";
             bool done = false;
@@ -201,7 +201,7 @@ namespace TeamflowSDK
             Debug.Log($"[WhisperManager] Transcription: {result}");
             OnTranscribed?.Invoke(result);
             WhisperService.NotifyTranscribed(result);
-            SetState(WhisperState.Idle);
+            SetState(WhisperService.State.Idle);
         }
 
         private IEnumerator RunInference(float[] pcm, Action<string> callback)
@@ -354,12 +354,12 @@ namespace TeamflowSDK
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
-        private void SetState(WhisperState state)
+        private void SetState(WhisperService.State state)
         {
             State = state;
             OnStateChanged?.Invoke(state);
-            WhisperService.NotifyState((WhisperService.State)(int)state,
-                state == WhisperState.Error ? LastError : "");
+            WhisperService.NotifyState(state,
+                state == WhisperService.State.Error ? LastError : "");
         }
     }
 }

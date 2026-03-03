@@ -2,7 +2,8 @@
   "name": "TeamflowSDK.WhisperSentis",
   "rootNamespace": "TeamflowSDK",
   "references": [
-    "TeamflowSDK.Runtime"
+    "TeamflowSDK.Runtime",
+    "Unity.Sentis"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

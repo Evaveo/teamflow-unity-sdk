@@ -32,12 +32,11 @@ namespace TeamflowSDK
         }
 
         // ── State ─────────────────────────────────────────────────────────────
-        public enum WhisperState { Idle, LoadingModel, Recording, Transcribing, Error }
-        public WhisperState State { get; private set; } = WhisperState.Idle;
+        public WhisperService.State State { get; private set; } = WhisperService.State.Idle;
         
         public string LastError { get; private set; } = "";
 
-        public event Action<WhisperState> OnStateChanged;
+        public event Action<WhisperService.State> OnStateChanged;
 
         // ── Config ────────────────────────────────────────────────────────────
         private const int SAMPLE_RATE     = 16000;
@@ -343,12 +342,14 @@ namespace TeamflowSDK
             return power;
         }
 
-        private void SetState(WhisperState state)
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        private void SetState(WhisperService.State state)
         {
             State = state;
             OnStateChanged?.Invoke(state);
-            WhisperService.NotifyState((WhisperService.State)(int)state,
-                state == WhisperState.Error ? LastError : "");
+            WhisperService.NotifyState(state,
+                state == WhisperService.State.Error ? LastError : "");
         }
     }
 }

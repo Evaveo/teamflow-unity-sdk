@@ -2,7 +2,8 @@
   "name": "TeamflowSDK.Whisper",
   "rootNamespace": "TeamflowSDK",
   "references": [
-    "TeamflowSDK.Runtime"
+    "TeamflowSDK.Runtime",
+    "Unity.Inference"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

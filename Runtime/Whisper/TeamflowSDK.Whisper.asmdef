@@ -2,8 +2,7 @@
   "name": "TeamflowSDK.Whisper",
   "rootNamespace": "TeamflowSDK",
   "references": [
-    "GUID:fcf49c0de9624c34a89531e3d93e5c65",
-    "GUID:63a57c8b658089e49a173b0f0c4870a7"
+    "TeamflowSDK.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
@@ -11,9 +10,7 @@
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": true,
-  "defineConstraints": [
-    "UNITY_AI_INFERENCE"
-  ],
+  "defineConstraints": [],
   "versionDefines": [
     {
       "name": "com.unity.ai.inference",

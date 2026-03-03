@@ -247,7 +247,19 @@ namespace TeamflowSDK
                 yield break;
             }
 
-            var attachment = JsonUtility.FromJson<TeamflowAttachment>(req.downloadHandler.text);
+            // Backend returns { attachments: [...] } — unwrap first item
+            var body = req.downloadHandler.text ?? "";
+            Debug.Log($"[TeamflowSDK] Upload response: {body}");
+            var wrapper = JsonUtility.FromJson<AttachmentsResponse>(body);
+            var attachment = wrapper?.attachments != null && wrapper.attachments.Count > 0
+                ? wrapper.attachments[0]
+                : null;
+            if (attachment == null)
+            {
+                Debug.LogWarning($"[TeamflowSDK] Upload: could not parse attachment from response: {body}");
+                onError?.Invoke("Could not parse attachment response");
+                yield break;
+            }
             onSuccess?.Invoke(attachment);
         }
 

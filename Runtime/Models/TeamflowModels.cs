@@ -61,9 +61,17 @@ namespace TeamflowSDK
     public class TeamflowAttachment
     {
         public string id;
-        public string taskId;
-        public string filename;
+        public string task_id;
+        public string name;
         public string url;
+        public string type;
+        public string uploaded_by;
+    }
+
+    [Serializable]
+    public class AttachmentsResponse
+    {
+        public List<TeamflowAttachment> attachments;
     }
 
     // ── Request DTOs ────────────────────────────────────────────────────

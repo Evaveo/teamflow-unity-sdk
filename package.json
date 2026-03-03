@@ -8,9 +8,7 @@
   "documentationUrl": "",
   "changelogUrl": "",
   "licensesUrl": "",
-  "dependencies": {
-    "com.unity.sentis": "1.4.0"
-  },
+  "dependencies": {},
   "keywords": ["teamflow", "tasks", "vr", "productivity", "speech-to-text", "whisper", "offline-stt"],
   "author": {
     "name": "TeamFlow",

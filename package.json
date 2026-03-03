@@ -1,15 +1,17 @@
 {
   "name": "com.evaveo.teamflow-sdk",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "displayName": "TeamFlow SDK",
-  "description": "Create and manage TeamFlow tasks from Unity — supports VR (Meta Quest), Editor Window, and mobile camera capture.",
-  "unity": "2021.3",
+  "description": "Create and manage TeamFlow tasks from Unity — supports VR (Meta Quest), Editor Window, offline French speech-to-text (Whisper-Tiny via Unity Sentis), and device code auth.",
+  "unity": "2022.3",
   "unityRelease": "0f1",
   "documentationUrl": "",
   "changelogUrl": "",
   "licensesUrl": "",
-  "dependencies": {},
-  "keywords": ["teamflow", "tasks", "vr", "productivity"],
+  "dependencies": {
+    "com.unity.sentis": "1.4.0"
+  },
+  "keywords": ["teamflow", "tasks", "vr", "productivity", "speech-to-text", "whisper", "offline-stt"],
   "author": {
     "name": "TeamFlow",
     "email": "support@teamflow.app",

@@ -32,6 +32,11 @@ namespace TeamflowSDK
         private string _vrCode        = "";
         private bool   _vrAuthBusy    = false;
 
+        // ── Whisper voice input ───────────────────────────────────────────────
+        private enum MicTarget { None, Title, Desc }
+        private MicTarget _micTarget  = MicTarget.None;
+        private bool      _whisperReady = false;
+
         private List<TeamflowProject> _projects    = new List<TeamflowProject>();
         private int                   _projectIdx  = 0;
 
@@ -55,6 +60,12 @@ namespace TeamflowSDK
 
         private void Start()
         {
+            // Initialise Whisper
+            var wm = WhisperManager.Instance;
+            wm.OnStateChanged  += OnWhisperStateChanged;
+            wm.OnTranscribed   += OnWhisperResult;
+            _whisperReady       = wm.IsReady;
+
             if (!TeamflowClient.Instance.IsAuthenticated)
             {
                 SetStatus("Entrez le code VR affiché sur le portail client", false);
@@ -201,10 +212,34 @@ namespace TeamflowSDK
             GUILayout.Space(4);
 
             // ── Task form ─────────────────────────────────────────────────
-            GUILayout.Label("Titre :", _labelStyle);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Titre :", _labelStyle, GUILayout.ExpandWidth(false));
+            GUILayout.FlexibleSpace();
+            if (_whisperReady)
+            {
+                bool recTitle = _micTarget == MicTarget.Title;
+                string micTitleLbl = recTitle ? "⏹ Stop" : "🎤";
+                GUI.color = recTitle ? new Color(1f, 0.4f, 0.4f) : Color.white;
+                if (GUILayout.Button(micTitleLbl, GUILayout.Width(38), GUILayout.Height(20)))
+                    ToggleMic(MicTarget.Title);
+                GUI.color = Color.white;
+            }
+            GUILayout.EndHorizontal();
             _taskTitle = GUILayout.TextField(_taskTitle, GUILayout.Height(24));
 
-            GUILayout.Label("Description :", _labelStyle);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Description :", _labelStyle, GUILayout.ExpandWidth(false));
+            GUILayout.FlexibleSpace();
+            if (_whisperReady)
+            {
+                bool recDesc = _micTarget == MicTarget.Desc;
+                string micDescLbl = recDesc ? "⏹ Stop" : "🎤";
+                GUI.color = recDesc ? new Color(1f, 0.4f, 0.4f) : Color.white;
+                if (GUILayout.Button(micDescLbl, GUILayout.Width(38), GUILayout.Height(20)))
+                    ToggleMic(MicTarget.Desc);
+                GUI.color = Color.white;
+            }
+            GUILayout.EndHorizontal();
             _taskDesc = GUILayout.TextArea(_taskDesc, GUILayout.Height(50));
 
             GUILayout.Space(4);
@@ -261,6 +296,60 @@ namespace TeamflowSDK
             }
 
             GUILayout.EndArea();
+        }
+
+        // ── Whisper callbacks ─────────────────────────────────────────────────
+
+        private void OnWhisperStateChanged(WhisperManager.WhisperState state)
+        {
+            _whisperReady = (state == WhisperManager.WhisperState.Idle);
+            switch (state)
+            {
+                case WhisperManager.WhisperState.LoadingModel:
+                    SetStatus("Chargement modèle Whisper…", false); break;
+                case WhisperManager.WhisperState.Recording:
+                    SetStatus("🎤 Parlez en français…", false); break;
+                case WhisperManager.WhisperState.Transcribing:
+                    SetStatus("Transcription en cours…", false); break;
+                case WhisperManager.WhisperState.Idle:
+                    if (!string.IsNullOrEmpty(_statusMsg) && _statusMsg.StartsWith("🎤"))
+                        SetStatus("", false);
+                    break;
+                case WhisperManager.WhisperState.Error:
+                    SetStatus(WhisperManager.Instance.LastError, true); break;
+            }
+        }
+
+        private void OnWhisperResult(string text)
+        {
+            if (string.IsNullOrEmpty(text)) { _micTarget = MicTarget.None; return; }
+            if (_micTarget == MicTarget.Title)
+                _taskTitle = text;
+            else if (_micTarget == MicTarget.Desc)
+                _taskDesc += (string.IsNullOrEmpty(_taskDesc) ? "" : " ") + text;
+            _micTarget = MicTarget.None;
+        }
+
+        private void ToggleMic(MicTarget target)
+        {
+            var wm = WhisperManager.Instance;
+            if (_micTarget == target)
+            {
+                // Stop recording
+                wm.StopListening();
+                _micTarget = MicTarget.None;
+            }
+            else
+            {
+                // Stop any active recording first
+                if (_micTarget != MicTarget.None) wm.StopListening();
+                _micTarget = target;
+                if (!wm.StartListening())
+                {
+                    SetStatus(wm.LastError, true);
+                    _micTarget = MicTarget.None;
+                }
+            }
         }
 
         // ── Screenshot ────────────────────────────────────────────────────────

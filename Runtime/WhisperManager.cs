@@ -4,8 +4,12 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-#if UNITY_SENTIS
+#if UNITY_SENTIS || UNITY_AI_INFERENCE
+#if UNITY_AI_INFERENCE
+using Unity.InferenceEngine;
+#else
 using Unity.Sentis;
+#endif
 #endif
 
 namespace TeamflowSDK
@@ -103,7 +107,7 @@ namespace TeamflowSDK
 
         private void OnDestroy()
         {
-#if UNITY_SENTIS
+#if UNITY_SENTIS || UNITY_AI_INFERENCE
             _encoderWorker?.Dispose();
             _decoderWorker?.Dispose();
 #endif
@@ -115,8 +119,8 @@ namespace TeamflowSDK
         {
             SetState(WhisperState.LoadingModel);
 
-#if !UNITY_SENTIS
-            LastError = "Unity Sentis not installed. Install com.unity.sentis ≥ 1.4 via Package Manager.";
+#if !UNITY_SENTIS && !UNITY_AI_INFERENCE
+            LastError = "Unity Inference Engine not installed. Install com.unity.ai.inference via Package Manager.";
             Debug.LogWarning($"[WhisperManager] {LastError}");
             SetState(WhisperState.Error);
             yield break;
@@ -242,8 +246,8 @@ namespace TeamflowSDK
             SetState(WhisperState.Transcribing);
             yield return null;
 
-#if !UNITY_SENTIS
-            OnTranscribed?.Invoke("[Sentis non installé]");
+#if !UNITY_SENTIS && !UNITY_AI_INFERENCE
+            OnTranscribed?.Invoke("[Inference Engine non installé]");
             SetState(WhisperState.Idle);
             yield break;
 #else
@@ -261,7 +265,7 @@ namespace TeamflowSDK
 #endif
         }
 
-#if UNITY_SENTIS
+#if UNITY_SENTIS || UNITY_AI_INFERENCE
         private IEnumerator RunInference(float[] pcm, Action<string> callback)
         {
             // 1. Mel spectrogram (80 bins, 3000 frames) from raw PCM

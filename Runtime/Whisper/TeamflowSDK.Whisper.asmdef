@@ -3,7 +3,7 @@
   "rootNamespace": "TeamflowSDK",
   "references": [
     "TeamflowSDK.Runtime",
-    "Unity.InferenceEngine"
+    "Unity.Sentis"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

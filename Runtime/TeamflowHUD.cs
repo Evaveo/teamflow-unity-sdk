@@ -37,7 +37,7 @@ namespace TeamflowSDK
 
         // ── Whisper voice input ───────────────────────────────────────────────
         private enum MicTarget { None, Title, Desc }
-        private MicTarget _micTarget  = MicTarget.None;
+        private MicTarget _micTarget    = MicTarget.None;
         private bool      _whisperReady = false;
 
         private List<TeamflowProject> _projects    = new List<TeamflowProject>();
@@ -81,11 +81,10 @@ namespace TeamflowSDK
 
         private void Start()
         {
-            // Initialise Whisper
-            var wm = WhisperManager.Instance;
-            wm.OnStateChanged  += OnWhisperStateChanged;
-            wm.OnTranscribed   += OnWhisperResult;
-            _whisperReady       = wm.IsReady;
+            // Initialise Whisper via decoupled WhisperService
+            WhisperService.OnStateChanged += OnWhisperStateChanged;
+            WhisperService.OnTranscribed  += OnWhisperResult;
+            _whisperReady = WhisperService.IsReady;
 
             if (!TeamflowClient.Instance.IsAuthenticated)
             {
@@ -321,23 +320,23 @@ namespace TeamflowSDK
 
         // ── Whisper callbacks ─────────────────────────────────────────────────
 
-        private void OnWhisperStateChanged(WhisperManager.WhisperState state)
+        private void OnWhisperStateChanged(WhisperService.State state)
         {
-            _whisperReady = (state == WhisperManager.WhisperState.Idle);
+            _whisperReady = (state == WhisperService.State.Idle);
             switch (state)
             {
-                case WhisperManager.WhisperState.LoadingModel:
+                case WhisperService.State.LoadingModel:
                     SetStatus("Chargement modèle Whisper…", false); break;
-                case WhisperManager.WhisperState.Recording:
+                case WhisperService.State.Recording:
                     SetStatus("🎤 Parlez en français…", false); break;
-                case WhisperManager.WhisperState.Transcribing:
+                case WhisperService.State.Transcribing:
                     SetStatus("Transcription en cours…", false); break;
-                case WhisperManager.WhisperState.Idle:
+                case WhisperService.State.Idle:
                     if (!string.IsNullOrEmpty(_statusMsg) && _statusMsg.StartsWith("🎤"))
                         SetStatus("", false);
                     break;
-                case WhisperManager.WhisperState.Error:
-                    SetStatus(WhisperManager.Instance.LastError, true); break;
+                case WhisperService.State.Error:
+                    SetStatus(WhisperService.LastError, true); break;
             }
         }
 
@@ -353,21 +352,18 @@ namespace TeamflowSDK
 
         private void ToggleMic(MicTarget target)
         {
-            var wm = WhisperManager.Instance;
             if (_micTarget == target)
             {
-                // Stop recording
-                wm.StopListening();
+                WhisperService.StopListening();
                 _micTarget = MicTarget.None;
             }
             else
             {
-                // Stop any active recording first
-                if (_micTarget != MicTarget.None) wm.StopListening();
+                if (_micTarget != MicTarget.None) WhisperService.StopListening();
                 _micTarget = target;
-                if (!wm.StartListening())
+                if (!WhisperService.StartListening())
                 {
-                    SetStatus(wm.LastError, true);
+                    SetStatus(WhisperService.LastError, true);
                     _micTarget = MicTarget.None;
                 }
             }

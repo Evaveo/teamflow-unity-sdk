@@ -100,6 +100,7 @@ namespace TeamflowSDK
             if (_instance != null && _instance != this) { Destroy(gameObject); return; }
             _instance = this;
             DontDestroyOnLoad(gameObject);
+            WhisperService.Register(StartListening, StopListening);
         }
 
         private void Start()
@@ -473,6 +474,8 @@ namespace TeamflowSDK
         {
             State = state;
             OnStateChanged?.Invoke(state);
+            WhisperService.NotifyState((WhisperService.State)(int)state,
+                state == WhisperState.Error ? LastError : "");
         }
     }
 
@@ -504,6 +507,14 @@ namespace TeamflowSDK
 
         public event Action<string>       OnTranscribed;
         public event Action<WhisperState> OnStateChanged;
+
+        private void Awake()
+        {
+            if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+            _instance = this;
+            DontDestroyOnLoad(gameObject);
+            WhisperService.Register(StartListening, StopListening);
+        }
 
         public bool StartListening() { return false; }
         public void StopListening()  { }

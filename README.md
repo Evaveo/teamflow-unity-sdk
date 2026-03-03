@@ -12,10 +12,10 @@ Create and manage TeamFlow tasks directly from Unity — supports **VR (Meta Que
 2. In Unity: **Window → Package Manager → + → Add package from disk…**
 3. Select `unity-sdk/package.json`.
 
-### Via git URL (once hosted)
+### Via git URL
 
 ```
-https://github.com/your-org/teamflow-unity-sdk.git
+https://github.com/Evaveo/teamflow-unity-sdk.git#v1.4.0
 ```
 
 ---

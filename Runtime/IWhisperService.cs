@@ -19,7 +19,7 @@ namespace TeamflowSDK
         public static string LastError { get; private set; } = "";
 
         // Called by WhisperManager when it changes state
-        internal static void NotifyState(State s, string error = "")
+        public static void NotifyState(State s, string error = "")
         {
             IsReady   = (s == State.Idle);
             LastError = error;
@@ -27,7 +27,7 @@ namespace TeamflowSDK
         }
 
         // Called by WhisperManager when transcription is done
-        internal static void NotifyTranscribed(string text)
+        public static void NotifyTranscribed(string text)
         {
             OnTranscribed?.Invoke(text);
         }
@@ -36,7 +36,7 @@ namespace TeamflowSDK
         private static Func<bool>  _startListening;
         private static Action      _stopListening;
 
-        internal static void Register(Func<bool> start, Action stop)
+        public static void Register(Func<bool> start, Action stop)
         {
             _startListening = start;
             _stopListening  = stop;

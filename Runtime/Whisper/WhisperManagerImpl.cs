@@ -208,9 +208,9 @@ namespace TeamflowSDK
             float[] mel = ComputeMelSpectrogram(pcm);
             yield return null;
 
-            using var melTensor = new TensorFloat(new TensorShape(1, 80, 3000), mel);
-            _encoderWorker.Execute(melTensor);
-            var audioFeatures = _encoderWorker.PeekOutput("output") as TensorFloat;
+            using var melTensor = new Tensor<float>(new TensorShape(1, 80, 3000), mel);
+            _encoderWorker.Schedule(melTensor);
+            var audioFeatures = _encoderWorker.PeekOutput("output") as Tensor<float>;
             audioFeatures?.MakeReadable();
             yield return null;
 
@@ -220,14 +220,11 @@ namespace TeamflowSDK
             for (int i = 0; i < MAX_NEW_TOKENS; i++)
             {
                 int[] tokenArr = tokens.ToArray();
-                using var tokensTensor = new TensorInt(new TensorShape(1, tokenArr.Length), tokenArr);
-                var inputs = new Dictionary<string, Tensor>
-                {
-                    { "audio_features", audioFeatures },
-                    { "tokens",         tokensTensor  }
-                };
-                _decoderWorker.Execute(inputs);
-                var logits = _decoderWorker.PeekOutput("logits") as TensorFloat;
+                using var tokensTensor = new Tensor<int>(new TensorShape(1, tokenArr.Length), tokenArr);
+                _decoderWorker.SetInput("audio_features", audioFeatures);
+                _decoderWorker.SetInput("tokens", tokensTensor);
+                _decoderWorker.Schedule();
+                var logits = _decoderWorker.PeekOutput("logits") as Tensor<float>;
                 logits?.MakeReadable();
 
                 int vocabSize = logits?.shape[^1] ?? 0;
@@ -236,7 +233,7 @@ namespace TeamflowSDK
                 float bestVal = float.NegativeInfinity;
                 for (int v = 0; v < vocabSize; v++)
                 {
-                    float val = logits?[0, lastRow, v] ?? float.NegativeInfinity;
+                    float val = logits != null ? logits[0, lastRow, v] : float.NegativeInfinity;
                     if (val > bestVal) { bestVal = val; bestToken = v; }
                 }
                 if (bestToken == EOT_TOKEN) break;

@@ -1,9 +1,7 @@
 {
   "name": "TeamflowSDK.Runtime",
   "rootNamespace": "TeamflowSDK",
-  "references": [
-    "UnityEngine.UI"
-  ],
+  "references": [],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

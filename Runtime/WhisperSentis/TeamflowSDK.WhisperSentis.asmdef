@@ -2,7 +2,8 @@
   "name": "TeamflowSDK.WhisperSentis",
   "rootNamespace": "TeamflowSDK",
   "references": [
-    "TeamflowSDK.Runtime"
+    "TeamflowSDK.Runtime",
+    "Unity.Sentis"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
@@ -10,7 +11,9 @@
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": true,
-  "defineConstraints": [],
+  "defineConstraints": [
+    "UNITY_SENTIS"
+  ],
   "versionDefines": [
     {
       "name": "com.unity.sentis",

@@ -9,32 +9,34 @@ using Unity.Sentis;
 
 namespace TeamflowSDK
 {
-    public class WhisperManager : MonoBehaviour
+    public class WhisperBackendSentis : MonoBehaviour, IWhisperBackend
     {
-        // ── Singleton ─────────────────────────────────────────────────────────
-        private static WhisperManager _instance;
-        public static WhisperManager Instance
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Bootstrap()
         {
-            get
-            {
-                if (_instance == null)
-                {
-                    var go = new GameObject("[WhisperManager]");
-                    _instance = go.AddComponent<WhisperManager>();
-                    DontDestroyOnLoad(go);
-                }
-                return _instance;
-            }
+            var go = new GameObject("[WhisperBackendSentis]");
+            var backend = go.AddComponent<WhisperBackendSentis>();
+            DontDestroyOnLoad(go);
+            WhisperManager.Instance.RegisterBackend(backend);
+        }
+
+        public bool IsReady { get; private set; } = false;
+        private Action<string> _onTranscribed;
+        private Action<string> _onError;
+
+        public void Init(Action<string> onTranscribed, Action<string> onError)
+        {
+            _onTranscribed = onTranscribed;
+            _onError = onError;
+            StartCoroutine(LoadModels());
         }
 
         // ── State ─────────────────────────────────────────────────────────────
         public enum WhisperState { Idle, LoadingModel, Recording, Transcribing, Error }
+        public WhisperState State { get; private set; } = WhisperState.Idle;
+        
+        public string LastError { get; private set; } = "";
 
-        public WhisperState State     { get; private set; } = WhisperState.Idle;
-        public bool         IsReady   { get; private set; } = false;
-        public string       LastError { get; private set; } = "";
-
-        public event Action<string>       OnTranscribed;
         public event Action<WhisperState> OnStateChanged;
 
         // ── Config ────────────────────────────────────────────────────────────
@@ -66,19 +68,6 @@ namespace TeamflowSDK
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
-        private void Awake()
-        {
-            if (_instance != null && _instance != this) { Destroy(gameObject); return; }
-            _instance = this;
-            DontDestroyOnLoad(gameObject);
-            WhisperService.Register(StartListening, StopListening);
-        }
-
-        private void Start()
-        {
-            StartCoroutine(LoadModels());
-        }
-
         private void OnDestroy()
         {
             _encoderWorker?.Dispose();
@@ -100,6 +89,7 @@ namespace TeamflowSDK
                             "Run Tools → TeamFlow → Download Whisper Models.";
                 Debug.LogWarning($"[WhisperManager] {LastError}");
                 SetState(WhisperState.Error);
+                _onError?.Invoke(LastError);
                 yield break;
             }
 
@@ -119,6 +109,7 @@ namespace TeamflowSDK
                 LastError = $"Model load failed: {ex.Message}";
                 Debug.LogError($"[WhisperManager] {LastError}");
                 SetState(WhisperState.Error);
+                _onError?.Invoke(LastError);
             }
         }
 
@@ -132,6 +123,7 @@ namespace TeamflowSDK
             {
                 LastError = "Aucun microphone détecté.";
                 SetState(WhisperState.Error);
+                _onError?.Invoke(LastError);
                 return false;
             }
             _micDevice   = Microphone.devices[0];
@@ -194,7 +186,7 @@ namespace TeamflowSDK
             yield return StartCoroutine(RunInference(pcm16k, r => { result = r; done = true; }));
             while (!done) yield return null;
             Debug.Log($"[WhisperManager] Transcription: {result}");
-            OnTranscribed?.Invoke(result);
+            _onTranscribed?.Invoke(result);
             WhisperService.NotifyTranscribed(result);
             SetState(WhisperState.Idle);
         }

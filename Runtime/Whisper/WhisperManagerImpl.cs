@@ -13,33 +13,34 @@ namespace TeamflowSDK
     /// Real Whisper implementation using Unity Inference Engine (com.unity.ai.inference).
     /// Only compiled when the package is installed. Registers itself with WhisperService on Awake.
     /// </summary>
-    public class WhisperManager : MonoBehaviour
+    public class WhisperBackendInference : MonoBehaviour, IWhisperBackend
     {
-        // ── Singleton ─────────────────────────────────────────────────────────
-        private static WhisperManager _instance;
-        public static WhisperManager Instance
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Bootstrap()
         {
-            get
-            {
-                if (_instance == null)
-                {
-                    var go = new GameObject("[WhisperManager]");
-                    _instance = go.AddComponent<WhisperManager>();
-                    DontDestroyOnLoad(go);
-                }
-                return _instance;
-            }
+            var go = new GameObject("[WhisperBackendInference]");
+            var backend = go.AddComponent<WhisperBackendInference>();
+            DontDestroyOnLoad(go);
+            WhisperManager.Instance.RegisterBackend(backend);
+        }
+
+        private Action<string> _onTranscribed;
+        private Action<string> _onError;
+
+        public void Init(Action<string> onTranscribed, Action<string> onError)
+        {
+            _onTranscribed = onTranscribed;
+            _onError = onError;
+            StartCoroutine(LoadModels());
         }
 
         // ── State ─────────────────────────────────────────────────────────────
-        public enum WhisperState { Idle, LoadingModel, Recording, Transcribing, Error }
+        public WhisperService.State State     { get; private set; } = WhisperService.State.Idle;
+        public bool                 IsReady   { get; private set; } = false;
+        public string               LastError { get; private set; } = "";
 
-        public WhisperState State     { get; private set; } = WhisperState.Idle;
-        public bool         IsReady   { get; private set; } = false;
-        public string       LastError { get; private set; } = "";
-
-        public event Action<string>       OnTranscribed;
-        public event Action<WhisperState> OnStateChanged;
+        public event Action<string>              OnTranscribed;
+        public event Action<WhisperService.State> OnStateChanged;
 
         // ── Config ────────────────────────────────────────────────────────────
         private const int   SAMPLE_RATE     = 16000;

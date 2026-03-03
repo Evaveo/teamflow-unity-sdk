@@ -1,6 +1,6 @@
 {
-  "name": "com.teamflow.sdk",
-  "version": "1.1.0",
+  "name": "com.evaveo.teamflow-sdk",
+  "version": "1.2.0",
   "displayName": "TeamFlow SDK",
   "description": "Create and manage TeamFlow tasks from Unity — supports VR (Meta Quest), Editor Window, and mobile camera capture.",
   "unity": "2021.3",

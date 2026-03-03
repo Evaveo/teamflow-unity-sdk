@@ -63,10 +63,10 @@ namespace TeamflowSDK
         private List<float> _audioBuffer = new List<float>();
 
         // ── Inference Engine ─────────────────────────────────────────────────
-        private Model   _encoderModel;
-        private Model   _decoderModel;
-        private IWorker _encoderWorker;
-        private IWorker _decoderWorker;
+        private Model  _encoderModel;
+        private Model  _decoderModel;
+        private Worker _encoderWorker;
+        private Worker _decoderWorker;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 

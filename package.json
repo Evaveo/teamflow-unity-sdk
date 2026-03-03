@@ -3,14 +3,12 @@
   "version": "1.4.0",
   "displayName": "TeamFlow SDK",
   "description": "Create and manage TeamFlow tasks from Unity — supports VR (Meta Quest), Editor Window, offline French speech-to-text (Whisper-Tiny via Unity Sentis), and device code auth.",
-  "unity": "6000.0",
+  "unity": "2022.3",
   "unityRelease": "0f1",
   "documentationUrl": "",
   "changelogUrl": "",
   "licensesUrl": "",
-  "dependencies": {
-    "com.unity.ai.inference": "2.4.0"
-  },
+  "dependencies": {},
   "samples": [
     {
       "displayName": "VR Starter",

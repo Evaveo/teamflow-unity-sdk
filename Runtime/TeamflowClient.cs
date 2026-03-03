@@ -181,6 +181,57 @@ namespace TeamflowSDK
             OnLogout?.Invoke();
         }
 
+        // ── Device Code Auth (VR Mode) ───────────────────────────────────
+
+        /// <summary>
+        /// Authenticate using a 4-digit device code generated from the web portal.
+        /// On success, stores the session and fires OnLoginSuccess.
+        /// </summary>
+        public void AuthWithDeviceCode(string code,
+            Action<TeamflowUser> onSuccess = null, Action<string> onError = null)
+        {
+            StartCoroutine(DeviceCodeCoroutine(code, onSuccess, onError));
+        }
+
+        private IEnumerator DeviceCodeCoroutine(string code,
+            Action<TeamflowUser> onSuccess, Action<string> onError)
+        {
+            var body = $"{{\"code\":\"{code}\"}}";
+            using var req = new UnityWebRequest($"{BaseUrl}/api/auth/device/exchange", "POST");
+            req.uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                var msg = $"Device auth failed: {req.error}";
+                Debug.LogWarning($"[TeamflowSDK] {msg} — body: {req.downloadHandler?.text}");
+                onError?.Invoke(msg);
+                OnLoginFailed?.Invoke(msg);
+                yield break;
+            }
+
+            var resp = JsonUtility.FromJson<LoginResponse>(req.downloadHandler.text);
+            if (resp == null || string.IsNullOrEmpty(resp.token))
+            {
+                var err = TryParseError(req.downloadHandler.text);
+                Debug.LogWarning($"[TeamflowSDK] Device auth error: {err}");
+                onError?.Invoke(err);
+                OnLoginFailed?.Invoke(err);
+                yield break;
+            }
+
+            Token       = resp.token;
+            CurrentUser = resp.user;
+            PersistSession();
+
+            Debug.Log($"[TeamflowSDK] VR auth success: {CurrentUser.name} ({CurrentUser.email})");
+            onSuccess?.Invoke(CurrentUser);
+            OnLoginSuccess?.Invoke(CurrentUser);
+        }
+
         // ── Projects ─────────────────────────────────────────────────────
 
         /// <summary>Fetch all projects the current user can access.</summary>

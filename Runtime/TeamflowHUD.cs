@@ -28,6 +28,10 @@ namespace TeamflowSDK
         private bool   _statusIsError = false;
         private bool   _isBusy        = false;
 
+        // ── VR Device Code auth ───────────────────────────────────────────────
+        private string _vrCode        = "";
+        private bool   _vrAuthBusy    = false;
+
         private List<TeamflowProject> _projects    = new List<TeamflowProject>();
         private int                   _projectIdx  = 0;
 
@@ -53,7 +57,7 @@ namespace TeamflowSDK
         {
             if (!TeamflowClient.Instance.IsAuthenticated)
             {
-                SetStatus("Non connecté — ouvrez Tools → TeamFlow → Create Task", true);
+                SetStatus("Entrez le code VR affiché sur le portail client", false);
                 return;
             }
             SetStatus($"Connecté : {TeamflowClient.Instance.CurrentUser?.name}", false);
@@ -129,7 +133,38 @@ namespace TeamflowSDK
 
             if (!auth)
             {
-                GUILayout.Label("Non connecté.\nOuvrez Tools → TeamFlow → Create Task.", _statusStyle);
+                GUILayout.Label("Mode VR — Identification", _labelStyle);
+                GUILayout.Space(4);
+                GUILayout.Label("Code affiché sur le portail web :", _statusStyle);
+                GUILayout.Space(4);
+                _vrCode = GUILayout.TextField(_vrCode, 4, GUILayout.Height(36));
+                GUILayout.Space(6);
+                GUI.enabled = !_vrAuthBusy && _vrCode.Length == 4;
+                if (GUILayout.Button(_vrAuthBusy ? "Connexion…" : "Se connecter", _btnStyle, GUILayout.Height(32)))
+                {
+                    _vrAuthBusy = true;
+                    SetStatus("Vérification du code…", false);
+                    TeamflowClient.Instance.AuthWithDeviceCode(
+                        _vrCode,
+                        onSuccess: user =>
+                        {
+                            _vrAuthBusy = false;
+                            _vrCode     = "";
+                            SetStatus($"Connecté : {user.name}", false);
+                            TeamflowClient.Instance.GetProjects(
+                                onSuccess: list => { _projects = list; LoadMembersForCurrentProject(); },
+                                onError:   err  => SetStatus($"Projets : {err}", true));
+                        },
+                        onError: err =>
+                        {
+                            _vrAuthBusy = false;
+                            SetStatus($"Code invalide : {err}", true);
+                        });
+                }
+                GUI.enabled = true;
+                GUILayout.Space(4);
+                if (!string.IsNullOrEmpty(_statusMsg))
+                    GUILayout.Label(_statusMsg, _statusStyle);
                 GUILayout.EndArea();
                 return;
             }

@@ -21,8 +21,8 @@ namespace TeamflowSDK.Editor
         private const string DECODER_URL = HF_BASE + "decoder_model_merged.onnx";
         private const string VOCAB_URL   = "https://huggingface.co/openai/whisper-tiny/resolve/main/vocab.json";
 
-        private const string ENCODER_FILENAME = "whisper-tiny-encoder.sentis";
-        private const string DECODER_FILENAME = "whisper-tiny-decoder.sentis";
+        private const string ENCODER_FILENAME = "whisper-tiny-encoder.onnx";
+        private const string DECODER_FILENAME = "whisper-tiny-decoder.onnx";
         private const string VOCAB_FILENAME   = "vocab.json";
 
         private static string DestFolder =>

@@ -42,8 +42,8 @@ namespace TeamflowSDK
         private const int SAMPLE_RATE     = 16000;
         private const int MAX_RECORD_SECS = 10;
 
-        private const string ENCODER_FILENAME = "whisper-tiny-encoder.sentis";
-        private const string DECODER_FILENAME = "whisper-tiny-decoder.sentis";
+        private const string ENCODER_FILENAME = "whisper-tiny-encoder.onnx";
+        private const string DECODER_FILENAME = "whisper-tiny-decoder.onnx";
 
         private const int LANG_TOKEN_FR    = 50297;
         private const int TRANSCRIBE_TOKEN = 50359;

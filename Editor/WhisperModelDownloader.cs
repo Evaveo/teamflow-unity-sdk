@@ -1,6 +1,8 @@
 using System;
 using System.IO;
-using System.Collections;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEditor;
 
@@ -14,8 +16,6 @@ namespace TeamflowSDK.Editor
     /// </summary>
     public class WhisperModelDownloader : EditorWindow
     {
-        // Hugging Face — onnx-community/whisper-tiny (converted to Sentis format)
-        // These are the standard ONNX exports compatible with Unity Sentis 1.4+
         private const string HF_BASE     = "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/";
         private const string ENCODER_URL = HF_BASE + "encoder_model.onnx";
         private const string DECODER_URL = HF_BASE + "decoder_model_merged.onnx";
@@ -33,6 +33,8 @@ namespace TeamflowSDK.Editor
         private float  _progress      = 0f;
         private string _log           = "";
 
+        private CancellationTokenSource _cts;
+
         [MenuItem("Tools/TeamFlow/Download Whisper Models (FR offline)")]
         public static void ShowWindow()
         {
@@ -47,15 +49,14 @@ namespace TeamflowSDK.Editor
             EditorGUILayout.Space(4);
 
             EditorGUILayout.HelpBox(
-                "Downloads Whisper-Tiny ONNX models (~75 MB total) from Hugging Face " +
-                "into Assets/StreamingAssets/Whisper/.\n\n" +
-                "Requires Unity Sentis (com.unity.sentis ≥ 1.4) installed via Package Manager.\n" +
-                "Models run 100% offline on device — no API key needed.",
+                "Télécharge les modèles Whisper-Tiny ONNX (~75 MB) depuis Hugging Face " +
+                "dans Assets/StreamingAssets/Whisper/.\n\n" +
+                "Fonctionne avec com.unity.ai.inference (Unity 6) ou com.unity.sentis (Unity 2022).\n" +
+                "Les modèles tournent 100% hors-ligne.",
                 MessageType.Info);
 
             EditorGUILayout.Space(8);
 
-            // Status of existing files
             bool encoderExists = File.Exists(Path.Combine(DestFolder, ENCODER_FILENAME));
             bool decoderExists = File.Exists(Path.Combine(DestFolder, DECODER_FILENAME));
             bool vocabExists   = File.Exists(Path.Combine(DestFolder, VOCAB_FILENAME));
@@ -69,18 +70,21 @@ namespace TeamflowSDK.Editor
 
             EditorGUILayout.Space(8);
 
-            // Progress bar
             if (_isDownloading)
             {
                 Rect r = GUILayoutUtility.GetRect(18, 18, "TextField");
                 EditorGUI.ProgressBar(r, _progress, _status);
                 EditorGUILayout.Space(4);
+
+                if (GUILayout.Button("Annuler", GUILayout.Height(28)))
+                {
+                    _cts?.Cancel();
+                }
             }
 
-            // Log
             if (!string.IsNullOrEmpty(_log))
             {
-                EditorGUILayout.HelpBox(_log, _log.StartsWith("✅") ? MessageType.Info : MessageType.Warning);
+                EditorGUILayout.HelpBox(_log, _log.StartsWith("✅") ? MessageType.Info : MessageType.Error);
             }
 
             EditorGUILayout.Space(4);
@@ -98,9 +102,7 @@ namespace TeamflowSDK.Editor
             }
 
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField(
-                "Destination : " + DestFolder,
-                EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Destination : " + DestFolder, EditorStyles.miniLabel);
         }
 
         private void StartDownload()
@@ -108,79 +110,98 @@ namespace TeamflowSDK.Editor
             _isDownloading = true;
             _log           = "";
             _progress      = 0f;
+            _status        = "Initialisation...";
 
-            // Create destination directory
             if (!Directory.Exists(DestFolder))
                 Directory.CreateDirectory(DestFolder);
 
-            EditorApplication.update += DownloadTick;
-            _downloadEnumerator = DownloadAll();
+            _cts = new CancellationTokenSource();
+            _ = RunDownloadAsync(_cts.Token);
         }
 
-        private IEnumerator _downloadEnumerator;
-
-        private void DownloadTick()
+        private async Task RunDownloadAsync(CancellationToken ct)
         {
-            if (_downloadEnumerator == null || !_downloadEnumerator.MoveNext())
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Unity Editor)");
+            client.Timeout = TimeSpan.FromMinutes(10);
+
+            try
             {
-                EditorApplication.update -= DownloadTick;
-                _isDownloading = false;
-                Repaint();
+                await DownloadFileAsync(client, ENCODER_URL,
+                    Path.Combine(DestFolder, ENCODER_FILENAME),
+                    "Encoder", 0f, 0.45f, ct);
+
+                await DownloadFileAsync(client, DECODER_URL,
+                    Path.Combine(DestFolder, DECODER_FILENAME),
+                    "Decoder", 0.45f, 0.9f, ct);
+
+                await DownloadFileAsync(client, VOCAB_URL,
+                    Path.Combine(DestFolder, VOCAB_FILENAME),
+                    "Vocab", 0.9f, 1.0f, ct);
+
+                _progress = 1f;
+                _status   = "Terminé !";
+                _log      = "✅ Modèles Whisper installés dans StreamingAssets/Whisper/";
+                Debug.Log("[WhisperModelDownloader] Tous les modèles téléchargés avec succès.");
                 AssetDatabase.Refresh();
             }
-            else
+            catch (OperationCanceledException)
             {
+                _status = "Annulé.";
+                _log    = "⚠️ Téléchargement annulé.";
+                Debug.LogWarning("[WhisperModelDownloader] Téléchargement annulé.");
+            }
+            catch (Exception ex)
+            {
+                _status = "Erreur !";
+                _log    = $"❌ {ex.Message}";
+                Debug.LogError($"[WhisperModelDownloader] Erreur : {ex}");
+            }
+            finally
+            {
+                _isDownloading = false;
                 Repaint();
             }
         }
 
-        private IEnumerator DownloadAll()
+        private async Task DownloadFileAsync(
+            HttpClient client, string url, string destPath,
+            string label, float progressStart, float progressEnd,
+            CancellationToken ct)
         {
-            // 1. Encoder
-            _status = "Téléchargement encoder...";
-            _progress = 0.1f;
-            yield return null;
-            yield return DownloadFile(ENCODER_URL, Path.Combine(DestFolder, ENCODER_FILENAME), 0.1f, 0.5f);
+            _status = $"Téléchargement {label}...";
+            _progress = progressStart;
+            Repaint();
+            Debug.Log($"[WhisperModelDownloader] Downloading {label} from {url}");
 
-            // 2. Decoder
-            _status = "Téléchargement decoder...";
-            _progress = 0.5f;
-            yield return null;
-            yield return DownloadFile(DECODER_URL, Path.Combine(DestFolder, DECODER_FILENAME), 0.5f, 0.9f);
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.EnsureSuccessStatusCode();
 
-            // 3. Vocab
-            _status = "Téléchargement vocab...";
-            _progress = 0.9f;
-            yield return null;
-            yield return DownloadFile(VOCAB_URL, Path.Combine(DestFolder, VOCAB_FILENAME), 0.9f, 1.0f);
+            long? totalBytes = response.Content.Headers.ContentLength;
+            using var stream    = await response.Content.ReadAsStreamAsync();
+            using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
 
-            _progress = 1f;
-            _status = "Terminé !";
-            _log = "✅ Modèles Whisper installés dans StreamingAssets/Whisper/\n" +
-                   "Redémarrez Unity si les fichiers n'apparaissent pas dans le projet.";
+            var buffer     = new byte[81920];
+            long downloaded = 0;
+            int  read;
+
+            while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+            {
+                await fileStream.WriteAsync(buffer, 0, read, ct);
+                downloaded += read;
+
+                if (totalBytes.HasValue && totalBytes.Value > 0)
+                    _progress = progressStart + (progressEnd - progressStart) * ((float)downloaded / totalBytes.Value);
+
+                Repaint();
+            }
+
+            Debug.Log($"[WhisperModelDownloader] Saved {label}: {destPath} ({downloaded / 1024} KB)");
         }
 
-        private IEnumerator DownloadFile(string url, string destPath, float progressStart, float progressEnd)
+        private void OnDestroy()
         {
-            using var www = UnityEngine.Networking.UnityWebRequest.Get(url);
-            var op = www.SendWebRequest();
-
-            while (!op.isDone)
-            {
-                _progress = progressStart + (progressEnd - progressStart) * www.downloadProgress;
-                Repaint();
-                yield return null;
-            }
-
-            if (www.result != UnityEngine.Networking.UnityWebRequest.Result.Success)
-            {
-                _log = $"❌ Erreur téléchargement {Path.GetFileName(destPath)}: {www.error}";
-                Debug.LogError($"[WhisperModelDownloader] {_log}");
-                yield break;
-            }
-
-            File.WriteAllBytes(destPath, www.downloadHandler.data);
-            Debug.Log($"[WhisperModelDownloader] Saved: {destPath} ({www.downloadHandler.data.Length / 1024} KB)");
+            _cts?.Cancel();
         }
     }
 }

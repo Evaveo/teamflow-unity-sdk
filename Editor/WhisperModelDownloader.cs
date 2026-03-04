@@ -5,8 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEditor;
-using UnityEditor.SceneManagement;
-using UnityEngine.SceneManagement;
 
 namespace TeamflowSDK.Editor
 {
@@ -182,69 +180,21 @@ namespace TeamflowSDK.Editor
         {
             SetProgress("Import des assets...", 1f);
 
-            // Import all ONNX as ModelAssets
             AssetDatabase.ImportAsset(AssetDbPath(ENCODER_FILE),  ImportAssetOptions.ForceUpdate);
             AssetDatabase.ImportAsset(AssetDbPath(DECODER1_FILE), ImportAssetOptions.ForceUpdate);
             AssetDatabase.ImportAsset(AssetDbPath(DECODER2_FILE), ImportAssetOptions.ForceUpdate);
             AssetDatabase.ImportAsset(AssetDbPath(LOGMEL_FILE),   ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
 
-            // Load the imported ModelAssets
-            var encoder  = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(ENCODER_FILE));
-            var decoder1 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER1_FILE));
-            var decoder2 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER2_FILE));
-            var logmel   = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(LOGMEL_FILE));
-
-            if (encoder == null || decoder1 == null || decoder2 == null || logmel == null)
-            {
-                _log = "⚠️ Modèles téléchargés mais import échoué — réouvrez Unity et ré-essayez.";
-                _isDownloading = false; Repaint();
-                return;
-            }
-
-            // Find or create WhisperBackendInference in active scene
-            AssignToScene(encoder, decoder1, decoder2, logmel);
+            bool assigned = TeamflowSceneSetup.SetupWhisper();
 
             _progress = 1f;
             _status   = "Terminé !";
-            _log      = "✅ Modèles téléchargés et assignés au WhisperBackendInference dans la scène !";
+            _log      = assigned
+                ? "✅ Modèles téléchargés et assignés au WhisperBackendInference dans la scène !"
+                : "✅ Modèles téléchargés dans Assets/WhisperModels/\n⚠️ Aucun WhisperBackendInference dans la scène — lance Tools → TeamFlow → Setup Scene.";
             _isDownloading = false;
             Repaint();
-        }
-
-        private static void AssignToScene(
-            UnityEngine.Object encoder,
-            UnityEngine.Object decoder1,
-            UnityEngine.Object decoder2,
-            UnityEngine.Object logmel)
-        {
-#if UNITY_AI_INFERENCE
-            var existing = FindAnyObjectByType<WhisperBackendInference>();
-            GameObject go;
-            if (existing != null)
-            {
-                go = existing.gameObject;
-            }
-            else
-            {
-                go = new GameObject("[WhisperBackendInference]");
-                go.AddComponent<WhisperBackendInference>();
-                Debug.Log("[WhisperModelDownloader] Créé WhisperBackendInference dans la scène.");
-            }
-
-            var so = new SerializedObject(go.GetComponent<WhisperBackendInference>());
-            so.FindProperty("audioEncoder").objectReferenceValue  = encoder;
-            so.FindProperty("audioDecoder1").objectReferenceValue = decoder1;
-            so.FindProperty("audioDecoder2").objectReferenceValue = decoder2;
-            so.FindProperty("logMelSpectro").objectReferenceValue = logmel;
-            so.ApplyModifiedProperties();
-
-            EditorUtility.SetDirty(go);
-            EditorSceneManager.MarkSceneDirty(go.scene);
-            Debug.Log("[WhisperModelDownloader] ModelAssets assignés au WhisperBackendInference ✅");
-#else
-            Debug.LogWarning("[WhisperModelDownloader] com.unity.ai.inference non installé — impossible d'assigner les modèles.");
-#endif
         }
 
         private static string AssetPath(string filename) =>

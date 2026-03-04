@@ -6,11 +6,12 @@
 Package Manager → **TeamFlow SDK** → **Samples** → **VR Starter** → `Import`
 
 ### 2. Configurer la scène
-Menu : **Tools → TeamFlow → Setup VR Scene**
+Menu : **Tools → TeamFlow → Setup Scene**
 
 Cela crée automatiquement dans ta scène :
 - `[TeamflowClient]` — singleton de connexion API
 - `[TeamflowHUD]` — overlay IMGUI (s'affiche en haut à droite)
+- `[WhisperBackendInference]` — moteur de transcription vocale (si modèles présents)
 
 ### 3. Configurer l'URL backend
 Sélectionne `[TeamflowClient]` dans la Hierarchy →  
@@ -61,10 +62,11 @@ ou appeler `TeamflowHUD.Instance.Toggle()` depuis n'importe quel script
 
 ## Speech-to-Text FR offline (optionnel)
 
-Nécessite **Unity Sentis** :
+Nécessite **Unity AI Inference Engine** (Unity 6+) :
 
-1. Package Manager → **+** → **Add package by name** → `com.unity.sentis` → Add
-2. Menu : **Tools → TeamFlow → Download Whisper Models** (~75 MB, Hugging Face)
+1. Package Manager → **+** → **Add package by name** → `com.unity.ai.inference` → Add
+2. Menu : **Tools → TeamFlow → Download Whisper Models** (~450 MB, 4 modèles ONNX depuis Hugging Face)
+   → Télécharge dans `Assets/WhisperModels/`, importe comme ModelAssets, et assigne automatiquement au composant
 3. Les boutons 🎤 apparaissent à côté des champs Titre et Description
 4. Cliquer 🎤 → parler en français → texte transcrit automatiquement
 

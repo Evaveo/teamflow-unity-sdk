@@ -94,7 +94,7 @@ namespace TeamflowSDK.Editor
             foreach (var name in new[] { "[TeamflowClient]", "[TeamflowHUD]", "[WhisperBackendInference]" })
             {
                 var go = GameObject.Find(name);
-                if (go != null) { Object.DestroyImmediate(go); removed++; }
+                if (go != null) { UnityEngine.Object.DestroyImmediate(go); removed++; }
             }
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             Debug.Log($"[TeamFlow Setup] Supprimé {removed} objet(s) TeamFlow de la scène.");
@@ -127,7 +127,7 @@ namespace TeamflowSDK.Editor
 
             if (!ModelsExistOnDisk())
             {
-                var existing2 = (Component)Object.FindAnyObjectByType(whisperType);
+                var existing2 = (Component)UnityEngine.Object.FindAnyObjectByType(whisperType);
                 if (existing2 == null)
                     new GameObject("[WhisperBackendInference]").AddComponent(whisperType);
                 Debug.LogWarning("[TeamFlow Setup] Modèles ONNX non trouvés dans Assets/WhisperModels/");
@@ -141,12 +141,12 @@ namespace TeamflowSDK.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            var encoder  = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{ENCODER_FILE}");
-            var decoder1 = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{DECODER1_FILE}");
-            var decoder2 = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{DECODER2_FILE}");
-            var logmel   = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{LOGMEL_FILE}");
+            var encoder  = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>($"{ASSET_FOLDER}/{ENCODER_FILE}");
+            var decoder1 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>($"{ASSET_FOLDER}/{DECODER1_FILE}");
+            var decoder2 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>($"{ASSET_FOLDER}/{DECODER2_FILE}");
+            var logmel   = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>($"{ASSET_FOLDER}/{LOGMEL_FILE}");
 
-            var existing = (Component)Object.FindAnyObjectByType(whisperType);
+            var existing = (Component)UnityEngine.Object.FindAnyObjectByType(whisperType);
             GameObject go = existing != null
                 ? existing.gameObject
                 : new GameObject("[WhisperBackendInference]");

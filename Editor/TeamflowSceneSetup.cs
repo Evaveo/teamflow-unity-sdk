@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -113,16 +114,22 @@ namespace TeamflowSDK.Editor
                 && File.Exists(Path.Combine(root, LOGMEL_FILE));
         }
 
+        private const string WHISPER_TYPE = "TeamflowSDK.WhisperBackendInference, TeamflowSDK.Whisper";
+
         public static bool SetupWhisper()
         {
-#if UNITY_AI_INFERENCE
-            // Ensure files are imported before trying to load as ModelAsset
+            var whisperType = Type.GetType(WHISPER_TYPE);
+            if (whisperType == null)
+            {
+                Debug.LogWarning("[TeamFlow Setup] com.unity.ai.inference non installé — WhisperBackendInference introuvable.");
+                return false;
+            }
+
             if (!ModelsExistOnDisk())
             {
-                // Still create the GameObject so user can assign manually later
-                var existing2 = Object.FindAnyObjectByType<WhisperBackendInference>();
+                var existing2 = (Component)Object.FindAnyObjectByType(whisperType);
                 if (existing2 == null)
-                    new GameObject("[WhisperBackendInference]").AddComponent<WhisperBackendInference>();
+                    new GameObject("[WhisperBackendInference]").AddComponent(whisperType);
                 Debug.LogWarning("[TeamFlow Setup] Modèles ONNX non trouvés dans Assets/WhisperModels/");
                 return false;
             }
@@ -139,17 +146,17 @@ namespace TeamflowSDK.Editor
             var decoder2 = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{DECODER2_FILE}");
             var logmel   = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{LOGMEL_FILE}");
 
-            var existing = Object.FindAnyObjectByType<WhisperBackendInference>();
+            var existing = (Component)Object.FindAnyObjectByType(whisperType);
             GameObject go = existing != null
                 ? existing.gameObject
                 : new GameObject("[WhisperBackendInference]");
 
             if (existing == null)
-                go.AddComponent<WhisperBackendInference>();
+                go.AddComponent(whisperType);
 
             if (encoder != null && decoder1 != null && decoder2 != null && logmel != null)
             {
-                var so = new SerializedObject(go.GetComponent<WhisperBackendInference>());
+                var so = new SerializedObject(go.GetComponent(whisperType));
                 so.FindProperty("audioEncoder").objectReferenceValue  = encoder;
                 so.FindProperty("audioDecoder1").objectReferenceValue = decoder1;
                 so.FindProperty("audioDecoder2").objectReferenceValue = decoder2;
@@ -163,10 +170,6 @@ namespace TeamflowSDK.Editor
 
             Debug.LogWarning("[TeamFlow Setup] Import ONNX réussi mais LoadAssetAtPath a retourné null — relance Setup Scene.");
             return false;
-#else
-            Debug.LogWarning("[TeamFlow Setup] com.unity.ai.inference non installé — WhisperBackendInference ignoré.");
-            return false;
-#endif
         }
     }
 }

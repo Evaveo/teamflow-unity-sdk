@@ -197,9 +197,17 @@ namespace TeamflowSDK.Editor
             Repaint();
         }
 
+        private const string WHISPER_TYPE = "TeamflowSDK.WhisperBackendInference, TeamflowSDK.Whisper";
+
         private static bool AssignModelsToScene()
         {
-#if UNITY_AI_INFERENCE
+            var whisperType = System.Type.GetType(WHISPER_TYPE);
+            if (whisperType == null)
+            {
+                Debug.LogWarning("[WhisperModelDownloader] com.unity.ai.inference non installé — WhisperBackendInference introuvable.");
+                return false;
+            }
+
             var encoder  = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(ENCODER_FILE));
             var decoder1 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER1_FILE));
             var decoder2 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER2_FILE));
@@ -208,12 +216,12 @@ namespace TeamflowSDK.Editor
             if (encoder == null || decoder1 == null || decoder2 == null || logmel == null)
                 return false;
 
-            var existing = UnityEngine.Object.FindAnyObjectByType<WhisperBackendInference>();
+            var existing = (Component)UnityEngine.Object.FindAnyObjectByType(whisperType);
             var go = existing != null ? existing.gameObject : new GameObject("[WhisperBackendInference]");
             if (existing == null)
-                go.AddComponent<WhisperBackendInference>();
+                go.AddComponent(whisperType);
 
-            var so = new SerializedObject(go.GetComponent<WhisperBackendInference>());
+            var so = new SerializedObject(go.GetComponent(whisperType));
             so.FindProperty("audioEncoder").objectReferenceValue  = encoder;
             so.FindProperty("audioDecoder1").objectReferenceValue = decoder1;
             so.FindProperty("audioDecoder2").objectReferenceValue = decoder2;
@@ -223,9 +231,6 @@ namespace TeamflowSDK.Editor
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(go.scene);
             Debug.Log("[WhisperModelDownloader] ModelAssets assignés au WhisperBackendInference ✅");
             return true;
-#else
-            return false;
-#endif
         }
 
         private static string AssetPath(string filename) =>

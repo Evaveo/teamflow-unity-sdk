@@ -2,8 +2,7 @@
   "name": "TeamflowSDK.Editor",
   "rootNamespace": "TeamflowSDK.Editor",
   "references": [
-    "TeamflowSDK.Runtime",
-    "Unity.InferenceEngine"
+    "TeamflowSDK.Runtime"
   ],
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],

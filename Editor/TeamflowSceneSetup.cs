@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using TeamflowSDK;
 
 namespace TeamflowSDK.Editor
 {
@@ -102,9 +103,37 @@ namespace TeamflowSDK.Editor
         /// Called by WhisperModelDownloader after download+import to assign models to scene component.
         /// Also called by SetupScene if models already exist.
         /// </summary>
+        /// <summary>Returns true if all 4 ONNX files exist on disk in Assets/WhisperModels/.</summary>
+        public static bool ModelsExistOnDisk()
+        {
+            string root = Path.Combine(Application.dataPath, "WhisperModels");
+            return File.Exists(Path.Combine(root, ENCODER_FILE))
+                && File.Exists(Path.Combine(root, DECODER1_FILE))
+                && File.Exists(Path.Combine(root, DECODER2_FILE))
+                && File.Exists(Path.Combine(root, LOGMEL_FILE));
+        }
+
         public static bool SetupWhisper()
         {
 #if UNITY_AI_INFERENCE
+            // Ensure files are imported before trying to load as ModelAsset
+            if (!ModelsExistOnDisk())
+            {
+                // Still create the GameObject so user can assign manually later
+                var existing2 = Object.FindAnyObjectByType<WhisperBackendInference>();
+                if (existing2 == null)
+                    new GameObject("[WhisperBackendInference]").AddComponent<WhisperBackendInference>();
+                Debug.LogWarning("[TeamFlow Setup] Modèles ONNX non trouvés dans Assets/WhisperModels/");
+                return false;
+            }
+
+            AssetDatabase.ImportAsset($"{ASSET_FOLDER}/{ENCODER_FILE}",  ImportAssetOptions.Default);
+            AssetDatabase.ImportAsset($"{ASSET_FOLDER}/{DECODER1_FILE}", ImportAssetOptions.Default);
+            AssetDatabase.ImportAsset($"{ASSET_FOLDER}/{DECODER2_FILE}", ImportAssetOptions.Default);
+            AssetDatabase.ImportAsset($"{ASSET_FOLDER}/{LOGMEL_FILE}",   ImportAssetOptions.Default);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
             var encoder  = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{ENCODER_FILE}");
             var decoder1 = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{DECODER1_FILE}");
             var decoder2 = AssetDatabase.LoadAssetAtPath<Object>($"{ASSET_FOLDER}/{DECODER2_FILE}");
@@ -132,7 +161,7 @@ namespace TeamflowSDK.Editor
                 return true;
             }
 
-            Debug.LogWarning("[TeamFlow Setup] Modèles ONNX non trouvés dans Assets/WhisperModels/ — composant créé sans modèles.");
+            Debug.LogWarning("[TeamFlow Setup] Import ONNX réussi mais LoadAssetAtPath a retourné null — relance Setup Scene.");
             return false;
 #else
             Debug.LogWarning("[TeamFlow Setup] com.unity.ai.inference non installé — WhisperBackendInference ignoré.");

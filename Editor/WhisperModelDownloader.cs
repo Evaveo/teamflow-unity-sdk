@@ -111,7 +111,7 @@ namespace TeamflowSDK.Editor
         }
 
         private static bool AssetExists(string filename) =>
-            File.Exists(Path.GetFullPath(Path.Combine(ASSET_FOLDER, filename)));
+            File.Exists(Path.Combine(Application.dataPath, "WhisperModels", filename));
 
         private void StartDownload()
         {

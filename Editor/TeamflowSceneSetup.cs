@@ -49,15 +49,17 @@ namespace TeamflowSDK.Editor
                 Debug.Log("[TeamFlow Setup] Created [TeamflowHUD]");
             }
 
-            // ── WhisperBackendInference ────────────────────────────────────
-            bool whisperConfigured = SetupWhisper();
+            // ── GoogleSTTBackend ───────────────────────────────────────────
+            var sttGO = GameObject.Find("[GoogleSTTBackend]");
+            if (sttGO == null)
+            {
+                sttGO = new GameObject("[GoogleSTTBackend]");
+                sttGO.AddComponent<GoogleSTTBackend>();
+                Debug.Log("[TeamFlow Setup] Created [GoogleSTTBackend]");
+            }
 
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             Selection.activeGameObject = clientGO;
-
-            string whisperStatus = whisperConfigured
-                ? "✅ WhisperBackendInference configuré avec les modèles."
-                : "⚠️ Modèles Whisper manquants.\n   Lance : Tools → TeamFlow → Download Whisper Models";
 
             EditorUtility.DisplayDialog(
                 "TeamFlow Setup ✅",
@@ -65,33 +67,21 @@ namespace TeamflowSDK.Editor
                 "Créé :\n" +
                 "  • [TeamflowClient]\n" +
                 "  • [TeamflowHUD]\n" +
-                "  • [WhisperBackendInference]\n\n" +
-                whisperStatus + "\n\n" +
+                "  • [GoogleSTTBackend]\n\n" +
+                "STT vocal :\n" +
+                "  Activez Google STT dans le portail admin :\n" +
+                "  Administration → STT Config → activer + clé API\n\n" +
                 "Étapes suivantes :\n" +
                 "1. Sauvegarde la scène (Ctrl+S)\n" +
-                "2. Appuie sur Play — le HUD s'affiche en haut à droite\n" +
-                "   (bouton ☰ ou F1 pour l'ouvrir)",
+                "2. Appuie sur Play — le HUD s'affiche en haut à droite",
                 "OK");
-
-            if (!whisperConfigured)
-            {
-                bool openDownloader = EditorUtility.DisplayDialog(
-                    "Télécharger les modèles Whisper ?",
-                    "Les modèles ONNX Whisper-Tiny (~450 MB) ne sont pas encore dans Assets/WhisperModels/.\n\n" +
-                    "Ouvrir le téléchargeur maintenant ?\n" +
-                    "(Nécessite com.unity.ai.inference via Package Manager)",
-                    "Ouvrir le téléchargeur", "Plus tard");
-
-                if (openDownloader)
-                    WhisperModelDownloader.ShowWindow();
-            }
         }
 
         [MenuItem("Tools/TeamFlow/Remove from Scene", priority = 10)]
         public static void RemoveFromScene()
         {
             int removed = 0;
-            foreach (var name in new[] { "[TeamflowClient]", "[TeamflowHUD]", "[WhisperBackendInference]" })
+            foreach (var name in new[] { "[TeamflowClient]", "[TeamflowHUD]", "[GoogleSTTBackend]", "[WhisperBackendInference]" })
             {
                 var go = GameObject.Find(name);
                 if (go != null) { UnityEngine.Object.DestroyImmediate(go); removed++; }

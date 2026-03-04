@@ -1,28 +1,41 @@
 #if UNITY_AI_INFERENCE
-// This file is only compiled when com.unity.ai.inference is installed
+// This file is only compiled when com.unity.ai.inference is installed.
+// Add a WhisperBackendInference component to a GameObject in your scene
+// and assign the 4 ModelAssets in the Inspector.
+// Models: https://huggingface.co/unity/inference-engine-whisper-tiny/tree/main/models
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
+using Unity.Collections;
 using UnityEngine;
 using Unity.InferenceEngine;
 
 namespace TeamflowSDK
 {
     /// <summary>
-    /// Real Whisper implementation using Unity Inference Engine (com.unity.ai.inference).
-    /// Only compiled when the package is installed. Registers itself with WhisperService on Awake.
+    /// Whisper-Tiny backend using Unity Inference Engine (com.unity.ai.inference, Unity 6+).
+    /// Assign the 4 ModelAssets from unity/inference-engine-whisper-tiny in the Inspector,
+    /// then this component auto-registers itself with WhisperManager on Start.
     /// </summary>
     public class WhisperBackendInference : MonoBehaviour, IWhisperBackend
     {
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void Bootstrap()
-        {
-            var go = new GameObject("[WhisperBackendInference]");
-            var backend = go.AddComponent<WhisperBackendInference>();
-            DontDestroyOnLoad(go);
-            WhisperManager.Instance.RegisterBackend(backend);
-        }
+        // ── Inspector fields ──────────────────────────────────────────────────
+        [Header("Whisper Models (from unity/inference-engine-whisper-tiny)")]
+        [SerializeField] private ModelAsset audioEncoder;
+        [SerializeField] private ModelAsset audioDecoder1;
+        [SerializeField] private ModelAsset audioDecoder2;
+        [SerializeField] private ModelAsset logMelSpectro;
+
+        [Header("Language (default: French)")]
+        [SerializeField] private int languageToken = 50265; // FR=50265, EN=50259, DE=50261
+
+        // ── IWhisperBackend ───────────────────────────────────────────────────
+        public WhisperService.State State   { get; private set; } = WhisperService.State.Idle;
+        public bool                 IsReady { get; private set; } = false;
+        public string               LastError { get; private set; } = "";
+
+        public event Action<string>               OnTranscribed;
+        public event Action<WhisperService.State> OnStateChanged;
 
         private Action<string> _onTranscribed;
         private Action<string> _onError;
@@ -34,27 +47,22 @@ namespace TeamflowSDK
             StartCoroutine(LoadModels());
         }
 
-        // ── State ─────────────────────────────────────────────────────────────
-        public WhisperService.State State     { get; private set; } = WhisperService.State.Idle;
-        public bool                 IsReady   { get; private set; } = false;
-        public string               LastError { get; private set; } = "";
+        // ── Tokens ────────────────────────────────────────────────────────────
+        private const int END_OF_TEXT        = 50257;
+        private const int START_OF_TRANSCRIPT = 50258;
+        private const int TRANSCRIBE         = 50359;
+        private const int NO_TIMESTAMPS      = 50363;
+        private const int MAX_TOKENS         = 224;
+        private const int MAX_SAMPLES        = 30 * 16000;
+        private const int SAMPLE_RATE        = 16000;
+        private const int MAX_RECORD_SECS    = 10;
 
-        public event Action<string>              OnTranscribed;
-        public event Action<WhisperService.State> OnStateChanged;
-
-        // ── Config ────────────────────────────────────────────────────────────
-        private const int   SAMPLE_RATE     = 16000;
-        private const int   MAX_RECORD_SECS = 10;
-
-        private const string ENCODER_FILENAME = "whisper-tiny-encoder.onnx";
-        private const string DECODER_FILENAME = "whisper-tiny-decoder.onnx";
-
-        private const int LANG_TOKEN_FR    = 50297;
-        private const int TRANSCRIBE_TOKEN = 50359;
-        private const int SOT_TOKEN        = 50258;
-        private const int EOT_TOKEN        = 50257;
-        private const int NO_TIMESTAMPS    = 50363;
-        private const int MAX_NEW_TOKENS   = 224;
+        // ── Workers ───────────────────────────────────────────────────────────
+        private Worker _encoder;
+        private Worker _decoder1;
+        private Worker _decoder2;
+        private Worker _spectrogram;
+        private Worker _argmax;
 
         // ── Mic ───────────────────────────────────────────────────────────────
         private AudioClip   _micClip;
@@ -63,18 +71,20 @@ namespace TeamflowSDK
         private int         _lastMicPos  = 0;
         private List<float> _audioBuffer = new List<float>();
 
-        // ── Inference Engine ─────────────────────────────────────────────────
-        private Model  _encoderModel;
-        private Model  _decoderModel;
-        private Worker _encoderWorker;
-        private Worker _decoderWorker;
-
         // ── Lifecycle ─────────────────────────────────────────────────────────
+
+        private void Start()
+        {
+            WhisperManager.Instance.RegisterBackend(this);
+        }
 
         private void OnDestroy()
         {
-            _encoderWorker?.Dispose();
-            _decoderWorker?.Dispose();
+            _encoder?.Dispose();
+            _decoder1?.Dispose();
+            _decoder2?.Dispose();
+            _spectrogram?.Dispose();
+            _argmax?.Dispose();
         }
 
         // ── Model loading ─────────────────────────────────────────────────────
@@ -83,27 +93,31 @@ namespace TeamflowSDK
         {
             SetState(WhisperService.State.LoadingModel);
 
-            var encoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", ENCODER_FILENAME);
-            var decoderPath = Path.Combine(Application.streamingAssetsPath, "Whisper", DECODER_FILENAME);
-
-            if (!File.Exists(encoderPath) || !File.Exists(decoderPath))
+            if (audioEncoder == null || audioDecoder1 == null || audioDecoder2 == null || logMelSpectro == null)
             {
-                LastError = "Whisper models not found in StreamingAssets/Whisper/. " +
-                            "Run Tools → TeamFlow → Download Whisper Models.";
-                Debug.LogWarning($"[WhisperManager] {LastError}");
+                LastError = "Whisper ModelAssets non assignés. Glissez les 4 modèles depuis " +
+                            "unity/inference-engine-whisper-tiny dans l'Inspector du WhisperBackendInference.";
+                Debug.LogError($"[WhisperManager] {LastError}");
                 SetState(WhisperService.State.Error);
+                _onError?.Invoke(LastError);
                 yield break;
             }
 
             yield return null;
             try
             {
-                _encoderModel  = ModelLoader.Load(encoderPath);
-                _decoderModel  = ModelLoader.Load(decoderPath);
-                _encoderWorker = new Worker(_encoderModel, BackendType.GPUCompute);
-                _decoderWorker = new Worker(_decoderModel, BackendType.GPUCompute);
+                _encoder     = new Worker(ModelLoader.Load(audioEncoder),   BackendType.GPUCompute);
+                _decoder1    = new Worker(ModelLoader.Load(audioDecoder1),  BackendType.GPUCompute);
+                _decoder2    = new Worker(ModelLoader.Load(audioDecoder2),  BackendType.GPUCompute);
+                _spectrogram = new Worker(ModelLoader.Load(logMelSpectro),  BackendType.GPUCompute);
+
+                var graph    = new FunctionalGraph();
+                var inp      = graph.AddInput(DataType.Float, new DynamicTensorShape(1, 1, 51865));
+                var amax     = Functional.ArgMax(inp, -1, false);
+                _argmax      = new Worker(graph.Compile(amax), BackendType.GPUCompute);
+
                 IsReady = true;
-                Debug.Log("[WhisperManager] Whisper-Tiny models loaded (FR offline).");
+                Debug.Log("[WhisperManager] Whisper-Tiny models loaded (InferenceEngine).");
                 SetState(WhisperService.State.Idle);
             }
             catch (Exception ex)
@@ -111,6 +125,7 @@ namespace TeamflowSDK
                 LastError = $"Model load failed: {ex.Message}";
                 Debug.LogError($"[WhisperManager] {LastError}");
                 SetState(WhisperService.State.Error);
+                _onError?.Invoke(LastError);
             }
         }
 
@@ -124,6 +139,7 @@ namespace TeamflowSDK
             {
                 LastError = "Aucun microphone détecté.";
                 SetState(WhisperService.State.Error);
+                _onError?.Invoke(LastError);
                 return false;
             }
             _micDevice   = Microphone.devices[0];
@@ -147,7 +163,7 @@ namespace TeamflowSDK
             int end = pos > 0 ? pos : samples.Length;
             float[] trimmed = new float[end];
             Array.Copy(samples, trimmed, end);
-            StartCoroutine(TranscribeCoroutine(trimmed));
+            _ = TranscribeAsync(trimmed);
         }
 
         // ── Update ────────────────────────────────────────────────────────────
@@ -166,7 +182,7 @@ namespace TeamflowSDK
             }
             if (pos > _lastMicPos)
             {
-                int len = pos - _lastMicPos;
+                int len   = pos - _lastMicPos;
                 float[] chunk = new float[len];
                 _micClip.GetData(chunk, _lastMicPos);
                 _audioBuffer.AddRange(chunk);
@@ -175,168 +191,92 @@ namespace TeamflowSDK
             if (_audioBuffer.Count >= SAMPLE_RATE * MAX_RECORD_SECS) StopListening();
         }
 
-        // ── Transcription ─────────────────────────────────────────────────────
+        // ── Transcription (async — official Unity pattern) ────────────────────
 
-        private IEnumerator TranscribeCoroutine(float[] pcm16k)
+        private async Awaitable TranscribeAsync(float[] pcm)
         {
             SetState(WhisperService.State.Transcribing);
-            yield return null;
-            string result = "";
-            bool done = false;
-            yield return StartCoroutine(RunInference(pcm16k, r => { result = r; done = true; }));
-            while (!done) yield return null;
-            Debug.Log($"[WhisperManager] Transcription: {result}");
-            OnTranscribed?.Invoke(result);
-            WhisperService.NotifyTranscribed(result);
-            SetState(WhisperService.State.Idle);
-        }
-
-        private IEnumerator RunInference(float[] pcm, Action<string> callback)
-        {
-            float[] mel = ComputeMelSpectrogram(pcm);
-            yield return null;
-
-            using var melTensor = new Tensor<float>(new TensorShape(1, 80, 3000), mel);
-            _encoderWorker.Schedule(melTensor);
-            var audioFeatures = _encoderWorker.PeekOutput("output") as Tensor<float>;
-            yield return null;
-
-            var tokens = new List<int> { SOT_TOKEN, LANG_TOKEN_FR, TRANSCRIBE_TOKEN, NO_TIMESTAMPS };
-            string text = "";
-
-            for (int i = 0; i < MAX_NEW_TOKENS; i++)
+            try
             {
-                int[] tokenArr = tokens.ToArray();
-                using var tokensTensor = new Tensor<int>(new TensorShape(1, tokenArr.Length), tokenArr);
-                _decoderWorker.SetInput("audio_features", audioFeatures);
-                _decoderWorker.SetInput("tokens", tokensTensor);
-                _decoderWorker.Schedule();
-                var logits = _decoderWorker.PeekOutput("logits") as Tensor<float>;
-                if (logits == null) break;
-                float[] logitsData = logits.DownloadToArray();
-                int rank      = logits.shape.rank;
-                int vocabSize = logits.shape[rank - 1];
-                int seqLen    = rank >= 2 ? logits.shape[rank - 2] : 1;
-                int lastRowOff = (seqLen - 1) * vocabSize;
-                int bestToken = 0;
-                float bestVal = float.NegativeInfinity;
-                for (int v = 0; v < vocabSize; v++)
+                int numSamples = Mathf.Min(pcm.Length, MAX_SAMPLES);
+                var audioData  = new float[MAX_SAMPLES];
+                Array.Copy(pcm, audioData, numSamples);
+
+                using var audioTensor = new Tensor<float>(new TensorShape(1, MAX_SAMPLES), audioData);
+                _spectrogram.Schedule(audioTensor);
+                var logmel = _spectrogram.PeekOutput() as Tensor<float>;
+
+                _encoder.Schedule(logmel);
+                var encodedAudio = _encoder.PeekOutput() as Tensor<float>;
+
+                var outputTokens = new NativeArray<int>(MAX_TOKENS, Allocator.Persistent);
+                outputTokens[0] = START_OF_TRANSCRIPT;
+                outputTokens[1] = languageToken;
+                outputTokens[2] = TRANSCRIBE;
+                int tokenCount  = 3;
+
+                var lastToken       = new NativeArray<int>(1, Allocator.Persistent);
+                lastToken[0]        = NO_TIMESTAMPS;
+                var lastTokenTensor = new Tensor<int>(new TensorShape(1, 1), new[] { NO_TIMESTAMPS });
+                var tokensTensor    = new Tensor<int>(new TensorShape(1, MAX_TOKENS));
+
+                string outputString = "";
+
+                while (tokenCount < MAX_TOKENS - 1)
                 {
-                    float val = logitsData[lastRowOff + v];
-                    if (val > bestVal) { bestVal = val; bestToken = v; }
-                }
-                if (bestToken == EOT_TOKEN) break;
-                tokens.Add(bestToken);
-                text += WhisperTokenizer.Decode(bestToken);
-                if (i % 8 == 0) yield return null;
-            }
-            callback?.Invoke(text.Trim());
-        }
+                    tokensTensor.Reshape(new TensorShape(1, tokenCount));
+                    tokensTensor.dataOnBackend.Upload<int>(outputTokens, tokenCount);
 
-        // ── Mel Spectrogram ───────────────────────────────────────────────────
+                    _decoder1.SetInput("input_ids",             tokensTensor);
+                    _decoder1.SetInput("encoder_hidden_states", encodedAudio);
+                    _decoder1.Schedule();
 
-        private static float[] ComputeMelSpectrogram(float[] pcm)
-        {
-            const int N_FFT    = 400;
-            const int HOP      = 160;
-            const int N_MELS   = 80;
-            const int N_FRAMES = 3000;
-            int targetLen = 480000;
-            float[] padded = new float[targetLen];
-            Array.Copy(pcm, padded, Mathf.Min(pcm.Length, targetLen));
-
-            float[] window = new float[N_FFT];
-            for (int i = 0; i < N_FFT; i++)
-                window[i] = 0.5f * (1f - Mathf.Cos(2f * Mathf.PI * i / (N_FFT - 1)));
-
-            float[] melFilters = BuildMelFilterbank(N_FFT, N_MELS, SAMPLE_RATE);
-            float[] mel = new float[N_MELS * N_FRAMES];
-
-            for (int frame = 0; frame < N_FRAMES; frame++)
-            {
-                int offset = frame * HOP;
-                float[] fftIn = new float[N_FFT];
-                for (int k = 0; k < N_FFT; k++)
-                {
-                    int idx = offset + k;
-                    fftIn[k] = idx < padded.Length ? padded[idx] * window[k] : 0f;
-                }
-                float[] power = FFTPower(fftIn);
-                for (int m = 0; m < N_MELS; m++)
-                {
-                    float sum = 0f;
-                    for (int f = 0; f < N_FFT / 2 + 1; f++)
-                        sum += melFilters[m * (N_FFT / 2 + 1) + f] * power[f];
-                    mel[m * N_FRAMES + frame] = Mathf.Max(sum, 1e-10f);
-                }
-            }
-            float maxVal = float.NegativeInfinity;
-            for (int i = 0; i < mel.Length; i++) { mel[i] = Mathf.Log10(mel[i]); if (mel[i] > maxVal) maxVal = mel[i]; }
-            for (int i = 0; i < mel.Length; i++) mel[i] = Mathf.Max(mel[i], maxVal - 8f);
-            for (int i = 0; i < mel.Length; i++) mel[i] = (mel[i] + 4f) / 4f;
-            return mel;
-        }
-
-        private static float[] BuildMelFilterbank(int nFft, int nMels, int sr)
-        {
-            int nFreqs = nFft / 2 + 1;
-            float[] filters = new float[nMels * nFreqs];
-            float melMin = HzToMel(0f), melMax = HzToMel(sr / 2f);
-            float[] melPoints = new float[nMels + 2];
-            for (int i = 0; i < melPoints.Length; i++)
-                melPoints[i] = MelToHz(melMin + i * (melMax - melMin) / (nMels + 1));
-            float[] freqBins = new float[nFreqs];
-            for (int i = 0; i < nFreqs; i++) freqBins[i] = i * sr / (float)nFft;
-            for (int m = 0; m < nMels; m++)
-            {
-                float lo = melPoints[m], center = melPoints[m + 1], hi = melPoints[m + 2];
-                for (int f = 0; f < nFreqs; f++)
-                {
-                    float hz = freqBins[f], val = 0f;
-                    if (hz >= lo && hz <= center && center > lo) val = (hz - lo) / (center - lo);
-                    else if (hz > center && hz <= hi && hi > center) val = (hi - hz) / (hi - center);
-                    filters[m * nFreqs + f] = val;
-                }
-            }
-            return filters;
-        }
-
-        private static float HzToMel(float hz) => 2595f * Mathf.Log10(1f + hz / 700f);
-        private static float MelToHz(float mel) => 700f * (Mathf.Pow(10f, mel / 2595f) - 1f);
-
-        private static float[] FFTPower(float[] x)
-        {
-            int n = x.Length;
-            float[] re = (float[])x.Clone(), im = new float[n];
-            int j = 0;
-            for (int i = 1; i < n; i++)
-            {
-                int bit = n >> 1;
-                for (; (j & bit) != 0; bit >>= 1) j ^= bit;
-                j ^= bit;
-                if (i < j) { float t = re[i]; re[i] = re[j]; re[j] = t; }
-            }
-            for (int len = 2; len <= n; len <<= 1)
-            {
-                float ang = -2f * Mathf.PI / len, wRe = Mathf.Cos(ang), wIm = Mathf.Sin(ang);
-                for (int i = 0; i < n; i += len)
-                {
-                    float curRe = 1f, curIm = 0f;
-                    for (int k = 0; k < len / 2; k++)
+                    _decoder2.SetInput("input_ids",             lastTokenTensor);
+                    _decoder2.SetInput("encoder_hidden_states", encodedAudio);
+                    for (int layer = 0; layer < 4; layer++)
                     {
-                        float uRe = re[i+k], uIm = im[i+k];
-                        float vRe = re[i+k+len/2]*curRe - im[i+k+len/2]*curIm;
-                        float vIm = re[i+k+len/2]*curIm + im[i+k+len/2]*curRe;
-                        re[i+k] = uRe+vRe; im[i+k] = uIm+vIm;
-                        re[i+k+len/2] = uRe-vRe; im[i+k+len/2] = uIm-vIm;
-                        float nr = curRe*wRe - curIm*wIm; curIm = curRe*wIm + curIm*wRe; curRe = nr;
+                        _decoder2.SetInput($"past_key_values.{layer}.decoder.key",   _decoder1.PeekOutput($"present.{layer}.decoder.key")   as Tensor<float>);
+                        _decoder2.SetInput($"past_key_values.{layer}.decoder.value", _decoder1.PeekOutput($"present.{layer}.decoder.value") as Tensor<float>);
+                        _decoder2.SetInput($"past_key_values.{layer}.encoder.key",   _decoder1.PeekOutput($"present.{layer}.encoder.key")   as Tensor<float>);
+                        _decoder2.SetInput($"past_key_values.{layer}.encoder.value", _decoder1.PeekOutput($"present.{layer}.encoder.value") as Tensor<float>);
                     }
+                    _decoder2.Schedule();
+
+                    var logits = _decoder2.PeekOutput("logits") as Tensor<float>;
+                    _argmax.Schedule(logits);
+
+                    using var tokenResult = await _argmax.PeekOutput().ReadbackAndCloneAsync() as Tensor<int>;
+                    int index = tokenResult[0];
+
+                    outputTokens[tokenCount] = lastToken[0];
+                    lastToken[0]             = index;
+                    tokenCount++;
+                    lastTokenTensor.dataOnBackend.Upload<int>(lastToken, 1);
+
+                    if (index == END_OF_TEXT) break;
+                    if (index < 50257)
+                        outputString += WhisperTokenizer.Decode(index);
                 }
+
+                outputTokens.Dispose();
+                lastToken.Dispose();
+                lastTokenTensor.Dispose();
+                tokensTensor.Dispose();
+
+                string result = outputString.Trim();
+                Debug.Log($"[WhisperManager] Transcription: {result}");
+                _onTranscribed?.Invoke(result);
+                OnTranscribed?.Invoke(result);
+                WhisperService.NotifyTranscribed(result);
+                SetState(WhisperService.State.Idle);
             }
-            int half = n / 2 + 1;
-            float[] power = new float[half];
-            for (int i = 0; i < half; i++) power[i] = re[i]*re[i] + im[i]*im[i];
-            return power;
+            catch (Exception ex)
+            {
+                LastError = $"Transcription failed: {ex.Message}";
+                Debug.LogError($"[WhisperManager] {LastError}");
+                SetState(WhisperService.State.Error);
+                _onError?.Invoke(LastError);
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

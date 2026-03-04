@@ -15,7 +15,7 @@ Create and manage TeamFlow tasks directly from Unity — supports **VR (Meta Que
 ### Via git URL
 
 ```
-https://github.com/Evaveo/teamflow-unity-sdk.git#v1.4.0
+https://github.com/Evaveo/teamflow-unity-sdk.git#v1.4.1
 ```
 
 ---
@@ -61,12 +61,35 @@ public class Example : MonoBehaviour
 
 ---
 
+## Speech-to-Text (Google STT)
+
+Depuis v1.4.1, le SDK utilise **Google Cloud Speech-to-Text** via un proxy sécurisé sur le backend — aucune clé API dans Unity, aucun modèle local.
+
+### Activation
+
+1. Dans le portail TeamFlow : **Admin → STT (Voix)** → coller la clé API Google + activer.
+2. Dans Unity : **Tools → TeamFlow → Setup Scene** → crée automatiquement `[GoogleSTTBackend]`.
+3. En jeu : le bouton 🎤 du HUD s'affiche si le service est activé côté serveur.
+
+### Fonctionnement
+
+```
+Unity mic → WAV base64 → POST /api/stt/transcribe → Google STT API → transcript
+```
+
+- La clé API n'est **jamais** envoyée au client Unity.
+- Le service peut être activé/désactivé à tout moment depuis le portail admin.
+- Quota Google : 60 min/mois gratuit.
+
+---
+
 ## Quickstart — Editor Window (temps réel)
 
 Ouvre la fenêtre depuis le menu Unity :
 
 ```
 Tools → TeamFlow → Create Task   (Ctrl+Shift+T)
+Tools → TeamFlow → Setup Scene
 Tools → TeamFlow → Settings
 ```
 
@@ -127,13 +150,18 @@ unity-sdk/
 │   ├── TeamflowClient.cs       ← Singleton HTTP (auth + requêtes)
 │   ├── TaskCreator.cs          ← Créer tâche + upload photo
 │   ├── CameraCapture.cs        ← Webcam / placeholder
+│   ├── TeamflowHUD.cs          ← HUD IMGUI overlay (flat + VR)
+│   ├── WhisperManager.cs       ← Façade STT (dispatche vers le backend actif)
+│   ├── IWhisperBackend.cs      ← Interface backend STT
+│   ├── GoogleSTTBackend.cs     ← Backend Google STT (proxy via /api/stt)
 │   └── Models/
 │       └── TeamflowModels.cs   ← User, Task, Project, DTOs
 ├── Editor/
 │   ├── TeamflowEditor.asmdef
-│   └── TeamflowEditorWindow.cs ← Fenêtre Editor temps réel
+│   ├── TeamflowEditorWindow.cs ← Fenêtre Editor temps réel
+│   └── TeamflowSceneSetup.cs  ← Setup Scene automatique (Tools → TeamFlow)
 └── Samples~/
-    └── CreateTaskUI.cs         ← Exemple UGUI complet (mobile + VR)
+    └── VRStarter/README.md     ← Guide démarrage rapide VR
 ```
 
 ---
@@ -175,5 +203,6 @@ unity-sdk/
 ## Dépendances
 
 - Unity **2021.3 LTS** ou supérieur
-- TextMeshPro (pour le sample `CreateTaskUI.cs`)
+- TextMeshPro (pour le sample)
 - `com.unity.editorcoroutines` **1.0+** recommandé (sinon le shim interne est utilisé)
+- **Aucun** modèle local ni package `com.unity.ai.inference` requis pour le STT

@@ -41,7 +41,6 @@ namespace TeamflowSDK.Editor
         private string _log           = "";
         private CancellationTokenSource _cts;
 
-        [MenuItem("Tools/TeamFlow/Download Whisper Models (FR offline)")]
         public static void ShowWindow()
         {
             var win = GetWindow<WhisperModelDownloader>("Whisper Models");

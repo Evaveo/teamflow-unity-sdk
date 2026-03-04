@@ -13,20 +13,12 @@ namespace TeamflowSDK.Editor
     /// Menu: Tools → TeamFlow → Setup Scene
     ///
     /// Creates:
-    ///   • [TeamflowClient]          — singleton, persists across scenes
-    ///   • [TeamflowHUD]             — IMGUI overlay (works flat + VR)
-    ///   • [WhisperBackendInference] — Whisper STT (requires com.unity.ai.inference)
-    ///
-    /// Models are stored in Assets/WhisperModels/ as ModelAssets (required by InferenceEngine).
-    /// vocab.json is stored in Assets/StreamingAssets/Whisper/ (loaded at runtime via path).
+    ///   • [TeamflowClient]     — singleton, persists across scenes
+    ///   • [TeamflowHUD]        — IMGUI overlay (works flat + VR)
+    ///   • [GoogleSTTBackend]   — Speech-to-Text via TeamFlow backend proxy (no local models needed)
     /// </summary>
     public static class TeamflowSceneSetup
     {
-        private const string ASSET_FOLDER  = "Assets/WhisperModels";
-        private const string ENCODER_FILE  = "whisper_encoder.onnx";
-        private const string DECODER1_FILE = "whisper_decoder.onnx";
-        private const string DECODER2_FILE = "whisper_decoder_with_past.onnx";
-        private const string LOGMEL_FILE   = "whisper_logmel.onnx";
 
         [MenuItem("Tools/TeamFlow/Setup Scene", priority = 0)]
         public static void SetupScene()

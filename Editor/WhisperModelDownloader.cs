@@ -139,29 +139,40 @@ namespace TeamflowSDK.Editor
                     Path.Combine(DestFolder, VOCAB_FILENAME),
                     "Vocab", 0.9f, 1.0f, ct);
 
-                _progress = 1f;
-                _status   = "Terminé !";
-                _log      = "✅ Modèles Whisper installés dans StreamingAssets/Whisper/";
                 Debug.Log("[WhisperModelDownloader] Tous les modèles téléchargés avec succès.");
-                AssetDatabase.Refresh();
+                EditorApplication.delayCall += () =>
+                {
+                    _progress = 1f;
+                    _status   = "Terminé !";
+                    _log      = "✅ Modèles Whisper installés dans StreamingAssets/Whisper/";
+                    _isDownloading = false;
+                    Repaint();
+                    AssetDatabase.Refresh();
+                };
             }
             catch (OperationCanceledException)
             {
-                _status = "Annulé.";
-                _log    = "⚠️ Téléchargement annulé.";
                 Debug.LogWarning("[WhisperModelDownloader] Téléchargement annulé.");
+                EditorApplication.delayCall += () =>
+                {
+                    _status = "Annulé."; _log = "⚠️ Téléchargement annulé.";
+                    _isDownloading = false; Repaint();
+                };
             }
             catch (Exception ex)
             {
-                _status = "Erreur !";
-                _log    = $"❌ {ex.Message}";
                 Debug.LogError($"[WhisperModelDownloader] Erreur : {ex}");
+                EditorApplication.delayCall += () =>
+                {
+                    _status = "Erreur !"; _log = $"❌ {ex.Message}";
+                    _isDownloading = false; Repaint();
+                };
             }
-            finally
-            {
-                _isDownloading = false;
-                Repaint();
-            }
+        }
+
+        private void SetProgress(string status, float progress)
+        {
+            EditorApplication.delayCall += () => { _status = status; _progress = progress; Repaint(); };
         }
 
         private async Task DownloadFileAsync(
@@ -169,31 +180,30 @@ namespace TeamflowSDK.Editor
             string label, float progressStart, float progressEnd,
             CancellationToken ct)
         {
-            _status = $"Téléchargement {label}...";
-            _progress = progressStart;
-            Repaint();
+            SetProgress($"Téléchargement {label}...", progressStart);
             Debug.Log($"[WhisperModelDownloader] Downloading {label} from {url}");
 
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             long? totalBytes = response.Content.Headers.ContentLength;
-            using var stream    = await response.Content.ReadAsStreamAsync();
+            using var stream     = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
 
-            var buffer     = new byte[81920];
+            var  buffer     = new byte[81920];
             long downloaded = 0;
             int  read;
 
-            while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+            while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false)) > 0)
             {
-                await fileStream.WriteAsync(buffer, 0, read, ct);
+                await fileStream.WriteAsync(buffer, 0, read, ct).ConfigureAwait(false);
                 downloaded += read;
 
                 if (totalBytes.HasValue && totalBytes.Value > 0)
-                    _progress = progressStart + (progressEnd - progressStart) * ((float)downloaded / totalBytes.Value);
-
-                Repaint();
+                {
+                    float p = progressStart + (progressEnd - progressStart) * ((float)downloaded / totalBytes.Value);
+                    SetProgress($"Téléchargement {label}... {downloaded / 1024} KB", p);
+                }
             }
 
             Debug.Log($"[WhisperModelDownloader] Saved {label}: {destPath} ({downloaded / 1024} KB)");

@@ -5,41 +5,49 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 
 namespace TeamflowSDK.Editor
 {
     /// <summary>
-    /// Editor utility to download Whisper-Tiny ONNX models from Hugging Face
-    /// into Assets/StreamingAssets/Whisper/.
+    /// Downloads Whisper-Tiny ONNX models from unity/inference-engine-whisper-tiny,
+    /// imports them as ModelAssets into Assets/WhisperModels/, then auto-assigns
+    /// them to a WhisperBackendInference component in the active scene.
     ///
     /// Menu: Tools → TeamFlow → Download Whisper Models (FR offline)
     /// </summary>
     public class WhisperModelDownloader : EditorWindow
     {
-        private const string HF_BASE     = "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/";
-        private const string ENCODER_URL = HF_BASE + "encoder_model.onnx";
-        private const string DECODER_URL = HF_BASE + "decoder_model_merged.onnx";
-        private const string VOCAB_URL   = "https://huggingface.co/openai/whisper-tiny/resolve/main/vocab.json";
+        // Official Unity Whisper models (pre-validated for InferenceEngine)
+        private const string HF_BASE          = "https://huggingface.co/unity/inference-engine-whisper-tiny/resolve/main/models/";
+        private const string ENCODER_URL      = HF_BASE + "encoder_model.onnx";
+        private const string DECODER1_URL     = HF_BASE + "decoder_model.onnx";
+        private const string DECODER2_URL     = HF_BASE + "decoder_with_past_model.onnx";
+        private const string LOGMEL_URL       = HF_BASE + "logmel_spectrogram.onnx";
+        private const string VOCAB_URL        = "https://huggingface.co/openai/whisper-tiny/resolve/main/vocab.json";
 
-        private const string ENCODER_FILENAME = "whisper-tiny-encoder.onnx";
-        private const string DECODER_FILENAME = "whisper-tiny-decoder.onnx";
-        private const string VOCAB_FILENAME   = "vocab.json";
+        private const string ENCODER_FILE     = "whisper_encoder.onnx";
+        private const string DECODER1_FILE    = "whisper_decoder.onnx";
+        private const string DECODER2_FILE    = "whisper_decoder_with_past.onnx";
+        private const string LOGMEL_FILE      = "whisper_logmel.onnx";
+        private const string VOCAB_FILE       = "vocab.json";
 
-        private static string DestFolder =>
+        private const string ASSET_FOLDER     = "Assets/WhisperModels";
+        private static string VocabStreamingPath =>
             Path.Combine(Application.streamingAssetsPath, "Whisper");
 
         private bool   _isDownloading = false;
         private string _status        = "";
         private float  _progress      = 0f;
         private string _log           = "";
-
         private CancellationTokenSource _cts;
 
         [MenuItem("Tools/TeamFlow/Download Whisper Models (FR offline)")]
         public static void ShowWindow()
         {
             var win = GetWindow<WhisperModelDownloader>("Whisper Models");
-            win.minSize = new Vector2(480, 320);
+            win.minSize = new Vector2(500, 380);
         }
 
         private void OnGUI()
@@ -49,23 +57,27 @@ namespace TeamflowSDK.Editor
             EditorGUILayout.Space(4);
 
             EditorGUILayout.HelpBox(
-                "Télécharge les modèles Whisper-Tiny ONNX (~75 MB) depuis Hugging Face " +
-                "dans Assets/StreamingAssets/Whisper/.\n\n" +
-                "Fonctionne avec com.unity.ai.inference (Unity 6) ou com.unity.sentis (Unity 2022).\n" +
-                "Les modèles tournent 100% hors-ligne.",
+                "Télécharge les 4 modèles ONNX officiels Unity depuis HuggingFace (~450 MB total)\n" +
+                "→ Les importe dans Assets/WhisperModels/ comme ModelAssets\n" +
+                "→ Les assigne automatiquement au WhisperBackendInference dans la scène active\n\n" +
+                "Nécessite : com.unity.ai.inference installé via Package Manager.",
                 MessageType.Info);
 
             EditorGUILayout.Space(8);
 
-            bool encoderExists = File.Exists(Path.Combine(DestFolder, ENCODER_FILENAME));
-            bool decoderExists = File.Exists(Path.Combine(DestFolder, DECODER_FILENAME));
-            bool vocabExists   = File.Exists(Path.Combine(DestFolder, VOCAB_FILENAME));
+            bool encoderOk  = AssetExists(ENCODER_FILE);
+            bool decoder1Ok = AssetExists(DECODER1_FILE);
+            bool decoder2Ok = AssetExists(DECODER2_FILE);
+            bool logmelOk   = AssetExists(LOGMEL_FILE);
+            bool vocabOk    = File.Exists(Path.Combine(VocabStreamingPath, VOCAB_FILE));
 
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.ToggleLeft($"Encoder  ({ENCODER_FILENAME})", encoderExists);
-                EditorGUILayout.ToggleLeft($"Decoder  ({DECODER_FILENAME})", decoderExists);
-                EditorGUILayout.ToggleLeft($"Vocab    ({VOCAB_FILENAME})",   vocabExists);
+                EditorGUILayout.ToggleLeft($"Encoder           ({ENCODER_FILE})",    encoderOk);
+                EditorGUILayout.ToggleLeft($"Decoder           ({DECODER1_FILE})",   decoder1Ok);
+                EditorGUILayout.ToggleLeft($"Decoder with past ({DECODER2_FILE})",   decoder2Ok);
+                EditorGUILayout.ToggleLeft($"LogMel spectro    ({LOGMEL_FILE})",     logmelOk);
+                EditorGUILayout.ToggleLeft($"Vocab             ({VOCAB_FILE})",      vocabOk);
             }
 
             EditorGUILayout.Space(8);
@@ -75,35 +87,33 @@ namespace TeamflowSDK.Editor
                 Rect r = GUILayoutUtility.GetRect(18, 18, "TextField");
                 EditorGUI.ProgressBar(r, _progress, _status);
                 EditorGUILayout.Space(4);
-
                 if (GUILayout.Button("Annuler", GUILayout.Height(28)))
-                {
                     _cts?.Cancel();
-                }
             }
 
             if (!string.IsNullOrEmpty(_log))
-            {
                 EditorGUILayout.HelpBox(_log, _log.StartsWith("✅") ? MessageType.Info : MessageType.Error);
-            }
 
             EditorGUILayout.Space(4);
 
+            bool allExist = encoderOk && decoder1Ok && decoder2Ok && logmelOk && vocabOk;
             using (new EditorGUI.DisabledScope(_isDownloading))
             {
                 if (GUILayout.Button(
-                    encoderExists && decoderExists && vocabExists
-                        ? "Re-télécharger les modèles"
-                        : "Télécharger les modèles Whisper",
-                    GUILayout.Height(36)))
+                    allExist ? "Re-télécharger et ré-assigner" : "Télécharger et configurer automatiquement",
+                    GUILayout.Height(40)))
                 {
                     StartDownload();
                 }
             }
 
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Destination : " + DestFolder, EditorStyles.miniLabel);
+            EditorGUILayout.LabelField($"Destination modèles : {ASSET_FOLDER}", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField($"Destination vocab   : {VocabStreamingPath}", EditorStyles.miniLabel);
         }
+
+        private static bool AssetExists(string filename) =>
+            File.Exists(Path.GetFullPath(Path.Combine(ASSET_FOLDER, filename)));
 
         private void StartDownload()
         {
@@ -112,8 +122,11 @@ namespace TeamflowSDK.Editor
             _progress      = 0f;
             _status        = "Initialisation...";
 
-            if (!Directory.Exists(DestFolder))
-                Directory.CreateDirectory(DestFolder);
+            if (!AssetDatabase.IsValidFolder(ASSET_FOLDER))
+                AssetDatabase.CreateFolder("Assets", "WhisperModels");
+
+            if (!Directory.Exists(VocabStreamingPath))
+                Directory.CreateDirectory(VocabStreamingPath);
 
             _cts = new CancellationTokenSource();
             _ = RunDownloadAsync(_cts.Token);
@@ -123,36 +136,31 @@ namespace TeamflowSDK.Editor
         {
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Unity Editor)");
-            client.Timeout = TimeSpan.FromMinutes(10);
+            client.Timeout = TimeSpan.FromMinutes(15);
 
             try
             {
                 await DownloadFileAsync(client, ENCODER_URL,
-                    Path.Combine(DestFolder, ENCODER_FILENAME),
-                    "Encoder", 0f, 0.45f, ct);
+                    AssetPath(ENCODER_FILE),  "Encoder",          0.00f, 0.15f, ct);
 
-                await DownloadFileAsync(client, DECODER_URL,
-                    Path.Combine(DestFolder, DECODER_FILENAME),
-                    "Decoder", 0.45f, 0.9f, ct);
+                await DownloadFileAsync(client, DECODER1_URL,
+                    AssetPath(DECODER1_FILE), "Decoder",          0.15f, 0.55f, ct);
+
+                await DownloadFileAsync(client, DECODER2_URL,
+                    AssetPath(DECODER2_FILE), "Decoder-with-past", 0.55f, 0.90f, ct);
+
+                await DownloadFileAsync(client, LOGMEL_URL,
+                    AssetPath(LOGMEL_FILE),   "LogMel",           0.90f, 0.95f, ct);
 
                 await DownloadFileAsync(client, VOCAB_URL,
-                    Path.Combine(DestFolder, VOCAB_FILENAME),
-                    "Vocab", 0.9f, 1.0f, ct);
+                    Path.Combine(VocabStreamingPath, VOCAB_FILE), "Vocab", 0.95f, 1.0f, ct);
 
-                Debug.Log("[WhisperModelDownloader] Tous les modèles téléchargés avec succès.");
-                EditorApplication.delayCall += () =>
-                {
-                    _progress = 1f;
-                    _status   = "Terminé !";
-                    _log      = "✅ Modèles Whisper installés dans StreamingAssets/Whisper/";
-                    _isDownloading = false;
-                    Repaint();
-                    AssetDatabase.Refresh();
-                };
+                Debug.Log("[WhisperModelDownloader] Tous les modèles téléchargés.");
+                EditorApplication.delayCall += FinishSetup;
             }
             catch (OperationCanceledException)
             {
-                Debug.LogWarning("[WhisperModelDownloader] Téléchargement annulé.");
+                Debug.LogWarning("[WhisperModelDownloader] Annulé.");
                 EditorApplication.delayCall += () =>
                 {
                     _status = "Annulé."; _log = "⚠️ Téléchargement annulé.";
@@ -170,6 +178,81 @@ namespace TeamflowSDK.Editor
             }
         }
 
+        private void FinishSetup()
+        {
+            SetProgress("Import des assets...", 1f);
+
+            // Import all ONNX as ModelAssets
+            AssetDatabase.ImportAsset(AssetDbPath(ENCODER_FILE),  ImportAssetOptions.ForceUpdate);
+            AssetDatabase.ImportAsset(AssetDbPath(DECODER1_FILE), ImportAssetOptions.ForceUpdate);
+            AssetDatabase.ImportAsset(AssetDbPath(DECODER2_FILE), ImportAssetOptions.ForceUpdate);
+            AssetDatabase.ImportAsset(AssetDbPath(LOGMEL_FILE),   ImportAssetOptions.ForceUpdate);
+            AssetDatabase.Refresh();
+
+            // Load the imported ModelAssets
+            var encoder  = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(ENCODER_FILE));
+            var decoder1 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER1_FILE));
+            var decoder2 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER2_FILE));
+            var logmel   = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(LOGMEL_FILE));
+
+            if (encoder == null || decoder1 == null || decoder2 == null || logmel == null)
+            {
+                _log = "⚠️ Modèles téléchargés mais import échoué — réouvrez Unity et ré-essayez.";
+                _isDownloading = false; Repaint();
+                return;
+            }
+
+            // Find or create WhisperBackendInference in active scene
+            AssignToScene(encoder, decoder1, decoder2, logmel);
+
+            _progress = 1f;
+            _status   = "Terminé !";
+            _log      = "✅ Modèles téléchargés et assignés au WhisperBackendInference dans la scène !";
+            _isDownloading = false;
+            Repaint();
+        }
+
+        private static void AssignToScene(
+            UnityEngine.Object encoder,
+            UnityEngine.Object decoder1,
+            UnityEngine.Object decoder2,
+            UnityEngine.Object logmel)
+        {
+#if UNITY_AI_INFERENCE
+            var existing = FindAnyObjectByType<WhisperBackendInference>();
+            GameObject go;
+            if (existing != null)
+            {
+                go = existing.gameObject;
+            }
+            else
+            {
+                go = new GameObject("[WhisperBackendInference]");
+                go.AddComponent<WhisperBackendInference>();
+                Debug.Log("[WhisperModelDownloader] Créé WhisperBackendInference dans la scène.");
+            }
+
+            var so = new SerializedObject(go.GetComponent<WhisperBackendInference>());
+            so.FindProperty("audioEncoder").objectReferenceValue  = encoder;
+            so.FindProperty("audioDecoder1").objectReferenceValue = decoder1;
+            so.FindProperty("audioDecoder2").objectReferenceValue = decoder2;
+            so.FindProperty("logMelSpectro").objectReferenceValue = logmel;
+            so.ApplyModifiedProperties();
+
+            EditorUtility.SetDirty(go);
+            EditorSceneManager.MarkSceneDirty(go.scene);
+            Debug.Log("[WhisperModelDownloader] ModelAssets assignés au WhisperBackendInference ✅");
+#else
+            Debug.LogWarning("[WhisperModelDownloader] com.unity.ai.inference non installé — impossible d'assigner les modèles.");
+#endif
+        }
+
+        private static string AssetPath(string filename) =>
+            Path.GetFullPath(Path.Combine(ASSET_FOLDER, filename));
+
+        private static string AssetDbPath(string filename) =>
+            $"{ASSET_FOLDER}/{filename}";
+
         private void SetProgress(string status, float progress)
         {
             EditorApplication.delayCall += () => { _status = status; _progress = progress; Repaint(); };
@@ -183,11 +266,11 @@ namespace TeamflowSDK.Editor
             SetProgress($"Téléchargement {label}...", progressStart);
             Debug.Log($"[WhisperModelDownloader] Downloading {label} from {url}");
 
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using var response  = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            long? totalBytes = response.Content.Headers.ContentLength;
-            using var stream     = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            long? totalBytes    = response.Content.Headers.ContentLength;
+            using var stream    = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
 
             var  buffer     = new byte[81920];
@@ -198,7 +281,6 @@ namespace TeamflowSDK.Editor
             {
                 await fileStream.WriteAsync(buffer, 0, read, ct).ConfigureAwait(false);
                 downloaded += read;
-
                 if (totalBytes.HasValue && totalBytes.Value > 0)
                 {
                     float p = progressStart + (progressEnd - progressStart) * ((float)downloaded / totalBytes.Value);
@@ -209,9 +291,6 @@ namespace TeamflowSDK.Editor
             Debug.Log($"[WhisperModelDownloader] Saved {label}: {destPath} ({downloaded / 1024} KB)");
         }
 
-        private void OnDestroy()
-        {
-            _cts?.Cancel();
-        }
+        private void OnDestroy() => _cts?.Cancel();
     }
 }

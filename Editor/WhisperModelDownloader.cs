@@ -186,15 +186,46 @@ namespace TeamflowSDK.Editor
             AssetDatabase.ImportAsset(AssetDbPath(LOGMEL_FILE),   ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
 
-            bool assigned = TeamflowSceneSetup.SetupWhisper();
+            bool assigned = AssignModelsToScene();
 
             _progress = 1f;
             _status   = "Terminé !";
             _log      = assigned
                 ? "✅ Modèles téléchargés et assignés au WhisperBackendInference dans la scène !"
-                : "✅ Modèles téléchargés dans Assets/WhisperModels/\n⚠️ Aucun WhisperBackendInference dans la scène — lance Tools → TeamFlow → Setup Scene.";
+                : "✅ Modèles téléchargés dans Assets/WhisperModels/\n⚠️ Lance Tools → TeamFlow → Setup Scene pour créer le composant.";
             _isDownloading = false;
             Repaint();
+        }
+
+        private static bool AssignModelsToScene()
+        {
+#if UNITY_AI_INFERENCE
+            var encoder  = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(ENCODER_FILE));
+            var decoder1 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER1_FILE));
+            var decoder2 = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(DECODER2_FILE));
+            var logmel   = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDbPath(LOGMEL_FILE));
+
+            if (encoder == null || decoder1 == null || decoder2 == null || logmel == null)
+                return false;
+
+            var existing = UnityEngine.Object.FindAnyObjectByType<WhisperBackendInference>();
+            var go = existing != null ? existing.gameObject : new GameObject("[WhisperBackendInference]");
+            if (existing == null)
+                go.AddComponent<WhisperBackendInference>();
+
+            var so = new SerializedObject(go.GetComponent<WhisperBackendInference>());
+            so.FindProperty("audioEncoder").objectReferenceValue  = encoder;
+            so.FindProperty("audioDecoder1").objectReferenceValue = decoder1;
+            so.FindProperty("audioDecoder2").objectReferenceValue = decoder2;
+            so.FindProperty("logMelSpectro").objectReferenceValue = logmel;
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(go);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(go.scene);
+            Debug.Log("[WhisperModelDownloader] ModelAssets assignés au WhisperBackendInference ✅");
+            return true;
+#else
+            return false;
+#endif
         }
 
         private static string AssetPath(string filename) =>

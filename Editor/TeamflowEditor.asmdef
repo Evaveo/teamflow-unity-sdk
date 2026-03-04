@@ -2,15 +2,22 @@
   "name": "TeamflowSDK.Editor",
   "rootNamespace": "TeamflowSDK.Editor",
   "references": [
-    "TeamflowSDK.Runtime"
+    "TeamflowSDK.Runtime",
+    "Unity.InferenceEngine"
   ],
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
-  "overrideReferences": true,
+  "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.ai.inference",
+      "expression": "",
+      "define": "UNITY_AI_INFERENCE"
+    }
+  ],
   "noEngineReferences": false
 }

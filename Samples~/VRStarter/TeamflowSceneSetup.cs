@@ -77,7 +77,10 @@ public class TeamflowSceneSetup : Editor
                 "Ouvrir le téléchargeur", "Plus tard");
 
             if (openDownloader)
-                TeamflowSDK.Editor.WhisperModelDownloader.ShowWindow();
+            {
+                var t = System.Type.GetType("TeamflowSDK.Editor.WhisperModelDownloader, TeamflowSDK.Editor");
+                t?.GetMethod("ShowWindow", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+            }
         }
     }
 

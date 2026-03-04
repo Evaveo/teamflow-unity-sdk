@@ -30,7 +30,7 @@ namespace TeamflowSDK
         public void Init(Action<string> onTranscribed, Action<string> onError)
         {
             _onTranscribed = onTranscribed;
-            _onError = onError;
+            _onError       = onError;
             StartCoroutine(LoadModels());
         }
 
@@ -70,19 +70,6 @@ namespace TeamflowSDK
         private Worker _decoderWorker;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
-
-        private void Awake()
-        {
-            if (_instance != null && _instance != this) { Destroy(gameObject); return; }
-            _instance = this;
-            DontDestroyOnLoad(gameObject);
-            WhisperService.Register(StartListening, StopListening);
-        }
-
-        private void Start()
-        {
-            StartCoroutine(LoadModels());
-        }
 
         private void OnDestroy()
         {

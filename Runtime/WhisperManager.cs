@@ -45,26 +45,24 @@ namespace TeamflowSDK
                 onTranscribed: text => {
                     OnTranscribed?.Invoke(text);
                     WhisperService.NotifyTranscribed(text);
-                    SetState(WhisperState.Idle);
+                    SetState(WhisperService.State.Idle);
                 },
                 onError: error => {
                     LastError = error;
-                    SetState(WhisperState.Error);
+                    SetState(WhisperService.State.Error);
                 }
             );
             Debug.Log($"[WhisperManager] Registered backend: {backend.GetType().Name}");
-            SetState(WhisperState.Idle); 
+            SetState(WhisperService.State.Idle);
         }
 
         // ── State ─────────────────────────────────────────────────────────────
-        public enum WhisperState { Idle, LoadingModel, Recording, Transcribing, Error }
-        
-        public WhisperState State     { get; private set; } = WhisperState.Idle;
-        public bool         IsReady   => _backend?.IsReady ?? false;
-        public string       LastError { get; private set; } = "";
+        public WhisperService.State State     { get; private set; } = WhisperService.State.Idle;
+        public bool                 IsReady   => _backend?.IsReady ?? false;
+        public string               LastError { get; private set; } = "";
 
-        public event Action<string>       OnTranscribed;
-        public event Action<WhisperState> OnStateChanged;
+        public event Action<string>                OnTranscribed;
+        public event Action<WhisperService.State>  OnStateChanged;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
         private void Awake()
@@ -96,7 +94,7 @@ namespace TeamflowSDK
             }
             
             bool started = _backend.StartListening();
-            if (started) SetState(WhisperState.Recording);
+            if (started) SetState(WhisperService.State.Recording);
             return started;
         }
 
@@ -104,14 +102,14 @@ namespace TeamflowSDK
         {
             if (_backend == null) return;
             _backend.StopListening();
-            SetState(WhisperState.Transcribing);
+            SetState(WhisperService.State.Transcribing);
         }
 
-        public void SetState(WhisperState state)
+        public void SetState(WhisperService.State state)
         {
             State = state;
             OnStateChanged?.Invoke(state);
-            WhisperService.NotifyState((WhisperService.State)(int)state, LastError);
+            WhisperService.NotifyState(state, LastError);
         }
     }
 }
